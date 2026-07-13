@@ -1,0 +1,16 @@
+# Local Postgres for development. Production uses a managed Postgres (Supabase/Neon).
+#   docker compose up -d
+#   DATABASE_URL=postgres://rbl:rbl@localhost:5432/rbl PGSSL=disable npm run db:setup
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: rbl
+      POSTGRES_PASSWORD: rbl
+      POSTGRES_DB: rbl
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata: {}

@@ -1,0 +1,101 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+*.tmp
+_leak_test.*
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# backups
+*.xlsx
+original_prototype_backup/
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REAL CUSTOMER DATA — NEVER COMMIT
+#
+# This project processes RBL Bank cardholder records: full names, mobile numbers,
+# 19-digit card account numbers, outstanding balances, and delinquency status.
+# Publishing that — even to a private repo, even to Vercel — is a personal-data
+# breach under India's DPDP Act, and it is the bank's customers who pay for it.
+#
+# Everything below stays on the machine that produced it. Nothing here is needed
+# to run the app: `npm run demo` generates a synthetic book with invented people.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# raw exports and anything derived from them
+*.csv
+*.tsv
+!evals/upload/4_SYNTHETIC_10k_inverted_book.csv     # invented people, safe to share
+
+# the local data store: source CSV, canonical rows, explorer rows, batch payloads.
+# Note the trailing /* — git cannot un-ignore a file inside an EXCLUDED DIRECTORY,
+# so we exclude the contents and then re-admit the one safe file.
+/src/data/*
+# ...except the model's measured credentials. Aggregate statistics only — no
+# account, no name, no rupee figure tied to a person. The app imports it at build,
+# so if this is missing the Vercel build fails.
+!/src/data/validation.json
+
+# eval artefacts built from the real book
+/evals/reports/
+/evals/upload/
+/evals/sweep/
+/evals/cases.jsonl
+/evals/llm_blind.jsonl
+/evals/llm_preds.json
+/evals/model_card.json
+/evals/stress_report.json
+/evals/stress_merge_report.txt
+/evals/llm_sweep_results.json
+
+# rendered slides (contain client figures)
+/deck/*.pdf
+/deck/slide-*.jpg
+
+# Early HTML prototypes with REAL cardholder rows baked into the markup —
+# 31 card numbers and 6 mobiles sitting in plain text at the repo root.
+# Ignored here; delete them from disk when you get a chance, they serve no purpose.
+/dashboard_preview.html
+/.preview_body.html
+*_preview.html
+
+
+# The public tunnel URL, written by `npm run dev`. Ephemeral, and pointing at a
+# machine — never commit it.
+.tunnel-url

@@ -1,0 +1,303 @@
+/* ─────────────────────────────────────────────────────────────
+   Theme tokens live on <html> so EVERY page + the body inherit
+   them. `html.dark` is toggled by the theme switch (and set
+   before paint by the init script in layout.js — no flash).
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --ink: 29, 29, 31;
+  --text: #1D1D1F;
+  --plane:
+    radial-gradient(1100px 650px at 10% -8%, rgba(0,113,227,.10), transparent 60%),
+    radial-gradient(950px 600px at 92% 0%, rgba(175,82,222,.09), transparent 55%),
+    radial-gradient(1300px 850px at 50% 108%, rgba(201,187,160,.28), transparent 60%),
+    linear-gradient(160deg, #F7F6F2 0%, #EDEBE4 48%, #E6E3DA 100%);
+  --glass-bg: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.5));
+  --glass-border: rgba(255,255,255,.9);
+  --glass-shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.16);
+  --glass-shadow-hi: 0 1px 0 rgba(255,255,255,1) inset, 0 26px 46px -22px rgba(29,29,31,.22);
+  --input-bg: rgba(255,255,255,.72);
+  --track: rgba(29,29,31,.07);
+  --scroll: rgba(29,29,31,.16);
+}
+
+html.dark {
+  --ink: 235, 235, 242;
+  --text: #F5F5F7;
+  --plane:
+    radial-gradient(1100px 650px at 10% -8%, rgba(0,113,227,.18), transparent 60%),
+    radial-gradient(950px 600px at 92% 0%, rgba(175,82,222,.15), transparent 55%),
+    radial-gradient(1300px 850px at 50% 108%, rgba(120,120,140,.16), transparent 60%),
+    linear-gradient(160deg, #1e1e21 0%, #17171a 48%, #0e0e10 100%);
+  --glass-bg: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
+  --glass-border: rgba(255,255,255,.14);
+  --glass-shadow: 0 1px 0 rgba(255,255,255,.07) inset, 0 24px 46px -22px rgba(0,0,0,.65);
+  --glass-shadow-hi: 0 1px 0 rgba(255,255,255,.10) inset, 0 30px 54px -22px rgba(0,0,0,.7);
+  --input-bg: rgba(255,255,255,.07);
+  --track: rgba(255,255,255,.10);
+  --scroll: rgba(255,255,255,.20);
+}
+
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--plane);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  transition: color .25s ease;
+}
+
+::selection { background: rgba(0,113,227,.18); color: var(--text); }
+
+/* ── Capsule buttons + inputs (Apple) ───────────────────────── */
+button, .btn, input[type="submit"] { border-radius: 999px; }
+input[type="text"], input[type="password"], input[type="number"], input[type="date"], select {
+  border-radius: 999px;
+}
+button { font-family: inherit; }
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+
+select {
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%238E8E93' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 12px center;
+}
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes islandIn { 0% { opacity: 0; transform: translate3d(-50%, -14px, 0) scale(.94); } 100% { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1); } }
+@keyframes cardIn { 0% { opacity: 0; transform: translateY(10px) scale(.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Dynamic Island — GPU-composited, no flicker ─────────────
+   The element is centred with translate3d (never re-laid out),
+   promoted to its own layer, and only `transform` animates.     */
+.island {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 50;
+  transform: translate3d(-50%, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: transform .45s cubic-bezier(.32,.72,0,1), box-shadow .45s ease;
+  animation: islandIn .6s cubic-bezier(.32,.72,0,1) both;
+}
+.island:hover {
+  transform: translate3d(-50%, 0, 0) scale(1.012);
+  box-shadow: var(--glass-shadow-hi);
+}
+
+/* ── Cards ──────────────────────────────────────────────────── */
+.hover-kpi { transition: transform .45s cubic-bezier(.32,.72,0,1), box-shadow .45s ease; will-change: transform; }
+.hover-kpi:hover { transform: translateY(-4px); box-shadow: var(--glass-shadow-hi); }
+
+.hover-row { transition: background-color .18s ease; }
+.hover-row:hover { background: rgba(var(--ink), .05) !important; }
+
+/* Pill (segmented / tab) buttons */
+.pill { border-radius: 999px; border: none; cursor: pointer; transition: background-color .22s ease, color .22s ease; }
+
+/* ─────────────────────────────────────────────────────────────
+   PRINT / PDF
+   The exec asked for "the dashboard, exactly as it looks, as a PDF".
+   So we do NOT build a second renderer — a separate PDF layout is a
+   second source of truth, and the two would drift apart within a week.
+   Instead the browser prints the real page, and these rules only:
+     · force the light theme (nobody prints a dark background)
+     · keep every colour (browsers strip backgrounds by default)
+     · hide the chrome that means nothing on paper
+     · stop cards being sliced in half across a page break
+   ───────────────────────────────────────────────────────────── */
+@media print {
+  /* ─────────────────────────────────────────────────────────────────────────────
+     THE PAGE ITSELF
+
+     LANDSCAPE, on purpose. This is a dashboard: 12-column grids, a 6-column
+     duration × disposition cross-tab, a 7-column disposition table. Forced into A4
+     portrait the browser lays it out at ~794px and every one of those grids crushes
+     — columns collide, numbers wrap mid-figure, the wide tables clip. Landscape gives
+     ~1120px, which is close to what the layout was designed for, so the PDF looks
+     like the screen instead of a squashed apology for it.
+
+     Margins are generous and EQUAL left/right so nothing sits flush to the trim, and
+     the bottom is deeper than the top to make room for the running footer.
+     ───────────────────────────────────────────────────────────────────────────── */
+  @page {
+    size: A4 landscape;
+    margin: 14mm 15mm 18mm 15mm;
+  }
+
+  /* Chrome/Safari drop background colours and gradients when printing. Without this
+     the whole thing arrives as white boxes with black text — every bar, every ring,
+     every heat cell gone. */
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html {
+    /* THE PAGE-COUNT LEVER.
+       Every card carries `break-inside: avoid` — it must, or a chart gets sliced in half
+       across a fold. The cost is white space: a card taller than the remaining room on a
+       sheet jumps to the next one and leaves the gap behind it. Do that seventeen times
+       and the report is mostly paper — 14 sheets, half of them empty.
+
+       Shrinking the layout is the fix, and `zoom` is the only tool that does it WITHOUT
+       breaking pagination (transform: scale() paints smaller but the browser still
+       paginates at the original size, so you get shrunken content on the same number of
+       pages, floating in the corner). zoom changes layout, so the paginator sees the
+       smaller boxes and packs them. Chrome — which is what this prints from — supports it.
+
+       0.82 puts roughly three cards on a sheet instead of one and a half. */
+    zoom: 0.82;
+  }
+
+  html, body {
+    background: #fff !important;
+    color: #1D1D1F !important;
+    font-size: 11px;                 /* the layout is built for a 1400px screen; step it down */
+  }
+
+  /* Print the light theme even if the user is looking at dark mode. */
+  html.dark {
+    --ink: 29, 29, 31;
+    --text: #1D1D1F;
+    --glass-bg: #fff;
+    --glass-border: rgba(0,0,0,.10);
+    --glass-shadow: none;
+    --card: #fff;
+  }
+
+  /* The animated backdrop is a 4-gradient stack. On paper it is a muddy smear and it
+     costs a fortune in toner. */
+  body::before, body::after { display: none !important; }
+
+  /* ── Kill the chrome. Anything that only exists to be clicked. ──────────────── */
+  .island, .no-print,
+  button, a[href^="/"] { display: none !important; }
+
+  /* The Account Explorer is 15 rows of a server-paginated table. On paper it is a
+     meaningless fragment of a 7,042-row list and it eats three pages. Everything it
+     can tell you is already above it, and the Top-20 table carries the accounts that
+     actually matter. It is a tool for interrogating the book live, not a thing you file. */
+  .no-print-explorer { display: none !important; }
+
+  /* ── The container. The screen layout is centred in a max-width column with its own
+     padding; on paper the @page margin IS the margin, so strip the double gutter or
+     the content ends up floating in the middle of the sheet. ──────────────────── */
+  .page-shell {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* ── The cover ─────────────────────────────────────────────────────────────── */
+  .print-only { display: block !important; }
+  .print-cover {
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-cover > .cover-provenance { margin-top: 22px !important; }
+  .print-cover > .cover-strip { margin-top: 18px !important; }
+
+  /* The on-screen hero is a 56px gradient headline and a 52px top pad. It is a
+     landing-page device. The cover has already said all of it, better. */
+  .hero { display: none !important; }
+
+  /* The custom running footer is NOT printed. `position: fixed` is not a running header
+     in Chrome's paged media engine — it paints the element once, at a viewport offset,
+     which lands it straight on top of the content instead of in the bottom margin. It
+     was printing across the KPI cards. Chrome's own header/footer already carries the
+     date, the title, the URL and "page x of y". */
+  .print-footer { display: none !important; }
+
+  /* ── Cards: never sliced across a page break ───────────────────────────────── */
+  .card, .print-block {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-shadow: none !important;
+    border: 1px solid rgba(0,0,0,.13) !important;
+    border-radius: 10px !important;
+    padding: 13px 15px !important;   /* 26px of screen padding is a luxury on A4 */
+    background: #fff !important;
+    margin: 0 !important;
+  }
+
+  /* …EXCEPT the long tables. `break-inside: avoid` on a card taller than half a sheet
+     is a guarantee of white space: it cannot fit in the remainder of the page, so it
+     jumps to the next one and leaves a third of a sheet blank behind it. Do that three
+     times and the "report" is mostly paper.
+
+     A table is the one thing that survives a page break gracefully — its header repeats
+     (thead: table-header-group, below) so the second half is still readable. So tables
+     are allowed to flow, and everything else stays whole. That is the difference between
+     a document that reads as designed and one that reads as printed-by-accident. */
+  .print-breakable {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  /* Tighter gutters. 16px of gap was tuned for a 1440px screen; on a 269mm page it just
+     pushes the columns apart and wastes the margin. */
+  .page-shell > div[style*="grid"] { gap: 10px !important; margin-bottom: 10px !important; }
+  .card + .card, .page-shell > .card { margin-bottom: 10px !important; }
+
+  /* ── Tables ────────────────────────────────────────────────────────────────── */
+  /* overflow-x:auto CLIPS in print — the L2 cross-tab and the disposition table would
+     arrive with their right-hand columns sliced clean off the page, and the reader
+     would have no way of knowing anything was missing. Let them lay out full width. */
+  .table-scroll {
+    overflow: visible !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .table-scroll table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 9px !important;
+    table-layout: auto !important;
+  }
+  .table-scroll th, .table-scroll td {
+    padding: 5px 6px !important;
+    white-space: normal !important;
+  }
+  /* If a table does have to break, carry its header onto the next page. A page of
+     unlabelled numbers is worse than no page. */
+  thead { display: table-header-group !important; }
+  tr    { break-inside: avoid !important; page-break-inside: avoid !important; }
+
+  /* ── Typography ────────────────────────────────────────────────────────────── */
+  h1, h2, h3 { break-after: avoid !important; page-break-after: avoid !important; }
+
+  /* The hero headline is a gradient clipped to the glyphs, so the text itself is
+     transparent. On paper the browser drops the background and the words vanish
+     entirely. Repaint solid wherever that trick is used. */
+  .print-solid-text {
+    background: none !important;
+    -webkit-text-fill-color: #1D1D1F !important;
+    color: #1D1D1F !important;
+  }
+
+  /* Charts mid-animation print as half-drawn bars — a 48.7% ring frozen at 12%.
+     Freeze everything at its final state. */
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* SVG (the AI-connection ring) must not be scaled away by the smaller root font. */
+  svg { max-width: 100% !important; height: auto !important; }
+}

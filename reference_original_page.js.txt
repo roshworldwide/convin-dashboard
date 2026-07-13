@@ -1,0 +1,1209 @@
+'use client';
+
+import { useState, useEffect, useMemo, Fragment } from 'react';
+
+// Setup original styling constants
+const COLORS = { blue: '#0071E3', green: '#34C759', orange: '#FF9500', red: '#FF3B30', purple: '#AF52DE', indigo: '#5856D6', teal: '#30B0C7', yellow: '#FFCC00', pink: '#FF2D55' };
+const BAND_ORDER = ['20-30K', '30-50k', '50-70k', '70-100K', '100-200k', '>200k'];
+const BAND_COLORS = ['#5AC8FA', '#0071E3', '#5856D6', '#AF52DE', '#FF2D55', '#FF3B30'];
+const REGION_ORDER = ['North', 'West', 'East'];
+const REGION_COLORS = { North: '#5856D6', West: '#0071E3', East: '#5AC8FA' };
+const RECENCY_ORDER = ['0-7d', '8-14d', '15-30d', '31-60d', '60d+', 'Never'];
+const RECENCY_COLORS = { '0-7d': '#34C759', '8-14d': '#5AC8FA', '15-30d': '#0071E3', '31-60d': '#FF9500', '60d+': '#FF3B30', 'Never': '#FF2D55' };
+const MOB_ORDER = ['0-12', '13-24', '25-36', '37-48', '49-60', '61-120', '120+'];
+const MOB_COLORS = ['#0071E3', '#3F8CFF', '#5856D6', '#7C63EE', '#9B5AF0', '#AF52DE', '#FF2D55'];
+const STRATEGY_ORDER = ['Others', 'High Bal', 'STPL', 'Model 2'];
+const STRATEGY_COLORS = { 'Others': '#0071E3', 'High Bal': '#FF9500', 'STPL': '#AF52DE', 'Model 2': '#5AC8FA' };
+const SEG_COLORS = { Green: '#34C759', Orange: '#FF9500', Red: '#FF3B30' };
+const DH_COLORS = { C: '#34C759', E: '#0071E3', P: '#FF9500', F: '#FF3B30', S: '#AF52DE', M: '#5AC8FA', X: '#FF2D55', N: '#B0B0B5' };
+
+// Formatter Helpers
+const fmtCr = (n) => {
+  const sign = n < 0 ? '-' : '';
+  const abs = Math.abs(n);
+  if (abs >= 1e7) return sign + '₹' + (abs / 1e7).toFixed(2) + ' Cr';
+  if (abs >= 1e5) return sign + '₹' + (abs / 1e5).toFixed(2) + ' L';
+  if (abs >= 1e3) return sign + '₹' + (abs / 1e3).toFixed(1) + 'K';
+  return sign + '₹' + Math.round(abs);
+};
+
+const fmtINR = (n) => {
+  return '₹' + Math.round(n).toLocaleString('en-IN');
+};
+
+const fmtInt = (n) => {
+  return Math.round(n).toLocaleString('en-IN');
+};
+
+const parseDH = (str) => {
+  const chips = [];
+  const s = (str || '').toString();
+  for (const ch of s) {
+    if (/[A-Za-z]/.test(ch) && DH_COLORS[ch.toUpperCase()]) {
+      chips.push({ ch: ch.toUpperCase(), color: DH_COLORS[ch.toUpperCase()] });
+    }
+  }
+  return chips.slice(0, 32);
+};
+
+export default function Page() {
+  const [authenticated, setAuthenticated] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [data, setData] = useState(null);
+
+  // Explorer States
+  const [q, setQ] = useState('');
+  const [seg, setSeg] = useState('All');
+  const [region, setRegion] = useState('All');
+  const [band, setBand] = useState('All');
+  const [decile, setDecile] = useState('All');
+  const [strategy, setStrategy] = useState('All');
+  const [pstate, setPstate] = useState('All');
+  const [city, setCity] = useState('All');
+  const [sortKey, setSortKey] = useState('out');
+  const [sortDir, setSortDir] = useState('desc');
+  const [page, setPage] = useState(0);
+  const [expandedRow, setExpandedRow] = useState(null);
+
+  // Status File States
+  const [statusRows, setStatusRows] = useState([]);
+  const [statusQ, setStatusQ] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusPage, setStatusPage] = useState(0);
+  const [statusTotal, setStatusTotal] = useState(0);
+  const [statusTotalPages, setStatusTotalPages] = useState(1);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  const PAGE_SIZE = 20;
+
+  // Initialize and check current auth session
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/data');
+        if (res.status === 200) {
+          const json = await res.json();
+          setData(json);
+          setAuthenticated(true);
+        } else {
+          setAuthenticated(false);
+        }
+      } catch (err) {
+      setAuthenticated(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+  checkAuth();
+}, []);
+
+// Fetch Status File rows dynamically with 300ms debounce
+useEffect(() => {
+  if (!authenticated) return;
+  
+  let active = true;
+  async function fetchStatus() {
+    setStatusLoading(true);
+    try {
+      const res = await fetch(`/api/status?q=${encodeURIComponent(statusQ)}&status=${encodeURIComponent(statusFilter)}&page=${statusPage}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (active) {
+          setStatusRows(json.rows || []);
+          setStatusTotal(json.total || 0);
+          setStatusTotalPages(json.totalPages || 1);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching status data:", err);
+    } finally {
+      if (active) setStatusLoading(false);
+    }
+  }
+
+  const delay = setTimeout(fetchStatus, 300);
+  return () => {
+    active = false;
+    clearTimeout(delay);
+  };
+}, [authenticated, statusQ, statusFilter, statusPage]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (res.ok) {
+        // Fetch dashboard data
+        const dataRes = await fetch('/api/data');
+        const json = await dataRes.json();
+        setData(json);
+        setAuthenticated(true);
+      } else {
+        const errJson = await res.json();
+        setAuthError(errJson.error || 'Login failed');
+      }
+    } catch (err) {
+      setAuthError('Connection failed');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth');
+      setAuthenticated(false);
+      setData(null);
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+  };
+
+  // Memoize Headers Index Map
+  const H = useMemo(() => {
+    if (!data) return {};
+    const map = {};
+    data.TABLE.header.forEach((h, i) => { map[h] = i; });
+    return map;
+  }, [data]);
+
+  // Decile list helper
+  const decileKeys = useMemo(() => {
+    if (!data) return [];
+    return Object.keys(data.AGG.decile).sort((a, b) => Number(a) - Number(b));
+  }, [data]);
+
+  // Filters setup
+  const bandOptions = useMemo(() => {
+    return [{ value: 'All', label: 'All Balance Bands' }, ...BAND_ORDER.map(b => ({ value: b, label: b }))];
+  }, []);
+
+  const decileOptions = useMemo(() => {
+    return [{ value: 'All', label: 'All Deciles' }, ...decileKeys.map(k => ({ value: k, label: 'Decile ' + k }))];
+  }, [decileKeys]);
+
+  const strategyOptions = useMemo(() => {
+    if (!data) return [];
+    return [{ value: 'All', label: 'All Strategies' }, ...STRATEGY_ORDER.filter(s => (data.AGG.strategy[s] || 0) > 0).map(s => ({ value: s, label: s }))];
+  }, [data]);
+
+  const stateOptions = useMemo(() => {
+    if (!data) return [];
+    const stateNames = Object.keys(data.AGG.stateAgg).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    return [{ value: 'All', label: 'All States' }, ...stateNames.map(s => ({ value: s, label: s }))];
+  }, [data]);
+
+  const cityOptions = useMemo(() => {
+    if (!data) return [];
+    const cityNames = Object.keys(data.AGG.cityAgg).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    return [{ value: 'All', label: 'All Cities' }, ...cityNames.map(c => ({ value: c, label: c }))];
+  }, [data]);
+
+  // Aggregate stats memoized
+  const totalAccountsStr = useMemo(() => data ? fmtInt(data.AGG.totals.accounts) : '', [data]);
+  const totalOutStr = useMemo(() => data ? fmtCr(data.AGG.totals.sumOut) : '', [data]);
+
+  const kpis = useMemo(() => {
+    if (!data) return [];
+    const t = data.AGG.totals;
+    return [
+      { label: 'Total Outstanding', value: fmtCr(t.sumOut), sub: `Across ${fmtInt(t.accounts)} accounts`, color: COLORS.blue },
+      { label: 'Total Amount Due', value: fmtCr(t.sumTad), sub: 'Current billing cycle', color: COLORS.indigo },
+      { label: 'Minimum Due', value: fmtCr(t.sumMad), sub: 'Minimum payable now', color: COLORS.purple },
+      { label: 'Recovered', value: fmtCr(t.sumLpa), sub: `${(t.sumLpa / t.sumTad * 100).toFixed(1)}% of amount due`, color: COLORS.green },
+      { label: 'Avg Ticket Size', value: fmtINR(t.sumOut / t.accounts), sub: 'Outstanding per account', color: COLORS.teal },
+      { label: 'Multi-Account', value: fmtInt(t.multiAcct), sub: `${(t.multiAcct / t.accounts * 100).toFixed(1)}% hold 2+ accounts`, color: COLORS.pink },
+    ];
+  }, [data]);
+
+  const segLegend = useMemo(() => {
+    if (!data) return [];
+    const total = data.AGG.totals.accounts;
+    return ['Green', 'Orange', 'Red']
+      .map(k => [k, data.AGG.segment[k] || 0])
+      .filter(e => e[1] > 0)
+      .map(([label, count]) => ({ label, color: SEG_COLORS[label], pct: ((count / total) * 100).toFixed(1) }));
+  }, [data]);
+
+  const segArcs = useMemo(() => {
+    if (!data) return [];
+    const total = data.AGG.totals.accounts;
+    const segEntries = ['Green', 'Orange', 'Red'].map(k => [k, data.AGG.segment[k] || 0]).filter(e => e[1] > 0);
+    const R = 64, CIRC = 2 * Math.PI * R;
+    let cum = 0;
+    return segEntries.map(([label, count]) => {
+      const frac = count / total;
+      const len = frac * CIRC;
+      const arc = { color: SEG_COLORS[label], dasharray: `${len} ${CIRC - len}`, dashoffset: -cum };
+      cum += len;
+      return arc;
+    });
+  }, [data]);
+
+  const bandBars = useMemo(() => {
+    if (!data) return [];
+    const bandMax = Math.max(...BAND_ORDER.map(b => (data.AGG.band[b] || { sum: 0 }).sum));
+    return BAND_ORDER.map((b, i) => {
+      const d = data.AGG.band[b] || { sum: 0, count: 0 };
+      return { label: b, formatted: fmtCr(d.sum), count: fmtInt(d.count), pct: bandMax ? (d.sum / bandMax * 100).toFixed(1) : 0, color: BAND_COLORS[i] };
+    });
+  }, [data]);
+
+  const regionBars = useMemo(() => {
+    if (!data) return [];
+    const regionMax = Math.max(...REGION_ORDER.map(r => (data.AGG.regionOut[r] || { sum: 0 }).sum));
+    return REGION_ORDER.map(r => {
+      const d = data.AGG.regionOut[r] || { sum: 0, count: 0 };
+      return { label: r, formatted: fmtCr(d.sum), pct: regionMax ? (d.sum / regionMax * 100).toFixed(1) : 0, color: REGION_COLORS[r], count: fmtInt(data.AGG.region[r] || 0) };
+    });
+  }, [data]);
+
+  const strategyBars = useMemo(() => {
+    if (!data) return [];
+    const v1max = Math.max(...STRATEGY_ORDER.map(s => data.AGG.strategy[s] || 0));
+    const m2max = Math.max(...STRATEGY_ORDER.map(s => data.AGG.strategyM2[s] || 0));
+    const bothMax = Math.max(v1max, m2max) || 1;
+    return STRATEGY_ORDER.filter(s => (data.AGG.strategy[s] || 0) > 0 || (data.AGG.strategyM2[s] || 0) > 0).map(s => ({
+      label: s,
+      v1: fmtInt(data.AGG.strategy[s] || 0),
+      m2: fmtInt(data.AGG.strategyM2[s] || 0),
+      v1pct: ((data.AGG.strategy[s] || 0) / bothMax * 100).toFixed(1),
+      m2pct: ((data.AGG.strategyM2[s] || 0) / bothMax * 100).toFixed(1),
+      color: STRATEGY_COLORS[s],
+    }));
+  }, [data]);
+
+  const decileBars = useMemo(() => {
+    if (!data) return [];
+    const decMax = Math.max(...decileKeys.map(k => data.AGG.decile[k].count));
+    return decileKeys.map((k, i) => ({
+      label: k,
+      count: fmtInt(data.AGG.decile[k].count),
+      pct: (data.AGG.decile[k].count / decMax * 100).toFixed(1),
+      color: `rgba(0,113,227,${(0.35 + 0.65 * (i / (decileKeys.length - 1))).toFixed(2)})`,
+    }));
+  }, [data, decileKeys]);
+
+  const stateBars = useMemo(() => {
+    if (!data) return [];
+    const topN = (agg, n) => Object.entries(agg).filter(([k]) => k).sort((a, b) => b[1].sum - a[1].sum).slice(0, n);
+    const stateTop = topN(data.AGG.stateAgg, 8);
+    const stateMax = stateTop.length ? stateTop[0][1].sum : 1;
+    return stateTop.map(([label, d]) => ({ label, formatted: fmtCr(d.sum), pct: (d.sum / stateMax * 100).toFixed(1) }));
+  }, [data]);
+
+  const cityBars = useMemo(() => {
+    if (!data) return [];
+    const topN = (agg, n) => Object.entries(agg).filter(([k]) => k).sort((a, b) => b[1].sum - a[1].sum).slice(0, n);
+    const cityTop = topN(data.AGG.cityAgg, 8);
+    const cityMax = cityTop.length ? cityTop[0][1].sum : 1;
+    return cityTop.map(([label, d]) => ({ label, formatted: fmtCr(d.sum), pct: (d.sum / cityMax * 100).toFixed(1) }));
+  }, [data]);
+
+  const recencyBars = useMemo(() => {
+    if (!data) return [];
+    const recMax = Math.max(...RECENCY_ORDER.map(r => data.AGG.recency[r] || 0));
+    return RECENCY_ORDER.map(r => ({ label: r, count: fmtInt(data.AGG.recency[r] || 0), pct: ((data.AGG.recency[r] || 0) / recMax * 100).toFixed(1), color: RECENCY_COLORS[r] }));
+  }, [data]);
+
+  const mobBars = useMemo(() => {
+    if (!data) return [];
+    const mobMax = Math.max(...MOB_ORDER.map(k => data.AGG.mobBuckets[k] || 0));
+    return MOB_ORDER.map((k, i) => ({ label: k + 'm', count: fmtInt(data.AGG.mobBuckets[k] || 0), pct: ((data.AGG.mobBuckets[k] || 0) / mobMax * 100).toFixed(1), color: MOB_COLORS[i] }));
+  }, [data]);
+
+  const matrixRows = useMemo(() => {
+    if (!data) return [];
+    const matMax = Math.max(1, ...REGION_ORDER.map(r => Object.values(data.AGG.segRegionCross[r] || {}).reduce((a, b) => a + b, 0)));
+    return REGION_ORDER.map(r => {
+      const rowData = data.AGG.segRegionCross[r] || {};
+      const rowTotal = Object.values(rowData).reduce((a, b) => a + b, 0) || 1;
+      return {
+        label: r,
+        cells: ['Green', 'Orange', 'Red'].map(s => {
+          const count = rowData[s] || 0;
+          const alpha = 0.06 + 0.32 * (count / matMax);
+          return { count: fmtInt(count), pct: ((count / rowTotal) * 100).toFixed(0), bg: `rgba(0,113,227,${alpha.toFixed(2)})` };
+        }),
+      };
+    });
+  }, [data]);
+
+  // Account Row Object Mapper
+  const rowToObj = (r) => {
+    const acct = r[H['Account No']];
+    const out = parseFloat(r[H['Total Outstanding']]) || 0;
+    const due = parseFloat(r[H['Total Amount Due']]) || 0;
+    const minDue = parseFloat(r[H['Minimum Amount Due']]) || 0;
+    const lastPayAmt = parseFloat(r[H['Last Payment Amount']]) || 0;
+    const lastPayDate = r[H['Last Payment Date']];
+    const seg = r[H['Segment']];
+    const alt = (r[H['AltNumbers']] || '').toString();
+    const altChips = alt ? alt.split(';').filter(Boolean) : [];
+    const isExpanded = expandedRow === acct;
+    return {
+      acctFull: acct,
+      acctMasked: '••••••' + acct.slice(-6),
+      name: r[H['Customer Name']] || '—',
+      title: r[H['Title']] || '—',
+      mobile: r[H['Mobile Number -1']] || '—',
+      card4: r[H['Card Number (Last 4 digits)']] || '—',
+      segment: seg,
+      segColor: SEG_COLORS[seg] || '#8E8E93',
+      segBg: (SEG_COLORS[seg] || '#8E8E93') + '22',
+      region: r[H['Region']],
+      band: r[H['Curr Bal Band']],
+      decile: r[H['Decile']],
+      outFmt: fmtCr(out),
+      outExact: fmtINR(out),
+      dueFmt: fmtCr(due),
+      dueExact: fmtINR(due),
+      minDueFmt: fmtINR(minDue),
+      lastPayFmt: lastPayDate ? (fmtCr(lastPayAmt) + ' on ' + lastPayDate) : 'No recent payment',
+      lastPayDateOnly: lastPayDate || 'No payment on record',
+      lastPayAmtFmt: lastPayAmt ? fmtINR(lastPayAmt) : '₹0',
+      mob: r[H['Months on Book']],
+      linkedAccts: r[H['Total Accounts with customer']],
+      strategy: r[H['As Per New Logic']],
+      strategyM2: r[H['As Per New Logic M2']],
+      primaryState: r[H['Primary State']] || '—',
+      pmCity: r[H['pm_city']] || '—',
+      pmState: r[H['pm_state']] || '—',
+      altChips,
+      noAlt: altChips.length === 0,
+      dhChips: parseDH(r[H['Delinquency History']]),
+      isExpanded,
+      toggle: () => setExpandedRow(isExpanded ? null : acct),
+      billCycle: '12',
+      dueDateConst: '02-07-2026',
+      portfolioConst: 'PDD+4',
+      genderConst: r[H['GENDER']] || 'Not captured',
+      aiAgencyConst: 'Convin',
+      emiConst: r[H['EMI Amount']] ? fmtINR(parseFloat(r[H['EMI Amount']])) : 'Not captured',
+      lastPayModeConst: r[H['Last payment mode']] || 'Not captured',
+    };
+  };
+
+  // Perform filtering & sorting in memory
+  const sortedRows = useMemo(() => {
+    if (!data) return [];
+    let rows = data.TABLE.rows;
+    const qq = q.trim().toLowerCase();
+
+    if (seg !== 'All' || region !== 'All' || band !== 'All' || decile !== 'All' || strategy !== 'All' || pstate !== 'All' || city !== 'All' || qq) {
+      rows = rows.filter(r => {
+        if (seg !== 'All' && r[H['Segment']] !== seg) return false;
+        if (region !== 'All' && r[H['Region']] !== region) return false;
+        if (band !== 'All' && r[H['Curr Bal Band']] !== band) return false;
+        if (decile !== 'All' && String(r[H['Decile']]) !== decile) return false;
+        if (strategy !== 'All' && r[H['As Per New Logic']] !== strategy) return false;
+        if (pstate !== 'All' && r[H['Primary State']] !== pstate) return false;
+        if (city !== 'All' && r[H['pm_city']] !== city) return false;
+        if (qq) {
+          const hay = (
+            r[H['Account No']] + ' ' + r[H['Customer Name']] + ' ' + r[H['Mobile Number -1']] + ' ' +
+            r[H['AltNumbers']] + ' ' + r[H['pm_city']] + ' ' + r[H['pm_state']] + ' ' + r[H['Primary State']] + ' ' +
+            r[H['Card Number (Last 4 digits)']] + ' ' + r[H['Title']] + ' ' + r[H['Segment']] + ' ' + r[H['Region']] + ' ' +
+            r[H['Curr Bal Band']] + ' ' + r[H['Decile']] + ' ' + r[H['As Per New Logic']] + ' ' + r[H['As Per New Logic M2']]
+          ).toLowerCase();
+          if (!hay.includes(qq)) return false;
+        }
+        return true;
+      });
+    }
+
+    const sortIdxMap = {
+      out: H['Total Outstanding'],
+      due: H['Total Amount Due'],
+      mob: H['Months on Book'],
+      decile: H['Decile'],
+      name: H['Customer Name']
+    };
+    const si = sortIdxMap[sortKey] ?? H['Total Outstanding'];
+    const dir = sortDir === 'asc' ? 1 : -1;
+
+    return rows.slice().sort((a, b) => {
+      const av = a[si], bv = b[si];
+      const an = parseFloat(av), bn = parseFloat(bv);
+      if (!isNaN(an) && !isNaN(bn)) return (an - bn) * dir;
+      return String(av).localeCompare(String(bv)) * dir;
+    });
+  }, [data, H, q, seg, region, band, decile, strategy, pstate, city, sortKey, sortDir]);
+
+  // Paginated Rows
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pageRows = useMemo(() => {
+    return sortedRows.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE).map(rowToObj);
+  }, [sortedRows, currentPage, expandedRow]);
+
+  const handleResetFilters = () => {
+    setQ('');
+    setSeg('All');
+    setRegion('All');
+    setBand('All');
+    setDecile('All');
+    setStrategy('All');
+    setPstate('All');
+    setCity('All');
+    setSortKey('out');
+    setSortDir('desc');
+    setPage(0);
+    setExpandedRow(null);
+  };
+
+  const handleSetSort = (key) => {
+    setSortKey(key);
+    setSortDir(sortKey === key ? (sortDir === 'desc' ? 'asc' : 'desc') : 'desc');
+    setPage(0);
+  };
+
+  // Auth screen layout
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#EDEBE4' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: '48px', height: '48px', border: '3px solid rgba(0,113,227,.12)', borderTopColor: '#0071E3', borderRadius: '50%', animation: 'shimmer 1.4s linear infinite', margin: '0 auto 16px' }} />
+          <div style={{ fontSize: '15px', fontWeight: '500', color: 'rgba(29,29,31,.6)' }}>Loading Recovery Intelligence...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <div style={{ minHeight: '100vh', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: 'radial-gradient(1100px 650px at 10% -8%, rgba(0,113,227,.10), transparent 60%), radial-gradient(950px 600px at 92% 0%, rgba(175,82,222,.09), transparent 55%), radial-gradient(1300px 850px at 50% 108%, rgba(201,187,160,.28), transparent 60%), linear-gradient(160deg, #F7F6F2 0%, #EDEBE4 48%, #E6E3DA 100%)', padding: '24px' }}>
+        <div style={{ width: '100%', maxWidth: '420px', background: 'linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.5))', backdropFilter: 'blur(32px) saturate(200%)', border: '1px solid rgba(255,255,255,.9)', borderRadius: '32px', boxShadow: '0 20px 48px -18px rgba(29,29,31,.24)', padding: '40px 32px', textAlign: 'center', animation: 'islandIn .6s cubic-bezier(.32,.72,0,1) both' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+            <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg,#0071E3,#5856D6)', boxShadow: '0 4px 16px rgba(0,113,227,.35)' }} />
+          </div>
+          <h2 style={{ fontSize: '26px', fontWeight: '700', letterSpacing: '-0.02em', margin: '0 0 8px', color: '#1D1D1F' }}>Recovery Intelligence</h2>
+          <p style={{ fontSize: '14px', color: 'rgba(29,29,31,.52)', margin: '0 0 32px', lineHeight: '1.4' }}>Secure access to RBL Bank portfolio PDD+4. Please enter password to log in.</p>
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <input
+                type="password"
+                placeholder="Enter password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ width: '100%', padding: '14px 18px', fontSize: '15px', borderRadius: '14px', border: '1px solid rgba(29,29,31,.15)', background: 'rgba(255,255,255,.75)', outline: 'none', color: '#1D1D1F', transition: 'border-color .2s' }}
+              />
+              {authError && (
+                <div style={{ fontSize: '13px', color: '#FF3B30', marginTop: '8px', textAlign: 'left', fontWeight: '500' }}>
+                  {authError}
+                </div>
+              )}
+            </div>
+            <button
+              type="submit"
+              style={{ width: '100%', padding: '14px', fontSize: '15px', fontWeight: '600', borderRadius: '14px', border: 'none', background: '#0071E3', color: '#fff', cursor: 'pointer', transition: 'background .2s, transform .2s' }}
+              onMouseOver={(e) => { e.currentTarget.style.background = '#0077ED'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = '#0071E3'; }}
+            >
+              Sign In
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Dashboard page
+  return (
+    <div style={{ minHeight: '100vh', width: '100%', background: 'radial-gradient(1100px 650px at 10% -8%, rgba(0,113,227,.10), transparent 60%), radial-gradient(950px 600px at 92% 0%, rgba(175,82,222,.09), transparent 55%), radial-gradient(1300px 850px at 50% 108%, rgba(201,187,160,.28), transparent 60%), linear-gradient(160deg, #F7F6F2 0%, #EDEBE4 48%, #E6E3DA 100%)', backgroundAttachment: 'fixed', color: '#1D1D1F', paddingBottom: '80px' }}>
+
+      {/* ================= DYNAMIC ISLAND NAV ================= */}
+      <div style={{ position: 'fixed', top: '18px', left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', justifyContent: 'center', width: '100%', pointerEvents: 'none' }}>
+        <div className="hover-island" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: '14px', padding: '9px 20px 9px 10px', borderRadius: '999px', background: 'linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.5))', backdropFilter: 'blur(32px) saturate(200%)', border: '1px solid rgba(255,255,255,.9)', boxShadow: '0 1px 0 rgba(255,255,255,1) inset, 0 18px 36px -14px rgba(29,29,31,.22), 0 0 0 0.5px rgba(29,29,31,.05)' }}>
+          <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg,#0071E3,#5856D6)', boxShadow: '0 2px 10px rgba(0,113,227,.4)' }}></div>
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15 }}>
+            <div style={{ fontSize: '13.5px', fontWeight: '600', letterSpacing: '-0.01em', color: '#1D1D1F' }}>Recovery Intelligence</div>
+            <div style={{ fontSize: '10.5px', color: 'rgba(29,29,31,.5)', letterSpacing: '.02em' }}>RBL Bank · Portfolio PDD+4</div>
+          </div>
+          <div style={{ width: '1px', height: '22px', background: 'rgba(29,29,31,.12)' }}></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'rgba(29,29,31,.6)', whiteSpace: 'nowrap' }}>
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#34C759', display: 'inline-block', animation: 'pulseDot 2s ease-in-out infinite', boxShadow: '0 0 8px rgba(52,199,89,.6)' }}></span>
+            Live · Cycle 12
+          </div>
+          <div style={{ width: '1px', height: '22px', background: 'rgba(29,29,31,.12)' }}></div>
+          <button onClick={handleLogout} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: '600', color: '#FF3B30', padding: '4px 8px', borderRadius: '6px' }}>Logout</button>
+        </div>
+      </div>
+      <div style={{ height: '76px' }}></div>
+
+      <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '0 40px' }}>
+
+        {/* ================= HERO ================= */}
+        <div style={{ padding: '56px 0 40px' }}>
+          <div style={{ fontSize: '12px', fontWeight: '600', letterSpacing: '.12em', color: '#0071E3', textTransform: 'uppercase', marginBottom: '14px', animation: 'fadeUp .7s cubic-bezier(.32,.72,0,1) both' }}>Portfolio Overview</div>
+          <h1 style={{ fontSize: '56px', lineHeight: 1.04, fontWeight: 700, letterSpacing: '-0.03em', margin: '0 0 16px', maxWidth: '820px', background: 'linear-gradient(120deg, #A855F7 0%, #EC4899 55%, #FF9F0A 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .05s' }}>
+            Every account.<br />One beautifully clear picture.
+          </h1>
+          <p style={{ fontSize: '18px', lineHeight: 1.5, color: 'rgba(29,29,31,.6)', maxWidth: '640px', margin: 0, fontWeight: 400, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .1s' }}>
+            {totalAccountsStr} active PDD+4 accounts, {totalOutStr} in outstanding balance, tracked live across risk, geography and repayment behaviour.
+          </p>
+        </div>
+
+        {/* ================= KPI ROW ================= */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '16px', marginBottom: '20px' }}>
+          {kpis.map((k, i) => (
+            <div className="hover-kpi" key={i} style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '22px', padding: '22px 20px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.14)', animation: 'fadeUp .7s cubic-bezier(.32,.72,0,1) both' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: k.color, marginBottom: '14px', boxShadow: `0 0 12px ${k.color}` }}></div>
+              <div style={{ fontSize: '11px', fontWeight: '600', letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(29,29,31,.5)', marginBottom: '8px' }}>{k.label}</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums', marginBottom: '6px', color: '#1D1D1F' }}>{k.value}</div>
+              <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)' }}>{k.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ================= BENTO GRID ================= */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '16px', marginBottom: '16px' }}>
+
+          {/* Segment donut */}
+          <div style={{ gridColumn: 'span 4', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Risk Segment</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '18px' }}>Share of {totalAccountsStr} accounts</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+              <svg width="152" height="152" viewBox="0 0 152 152" style={{ flex: 'none' }}>
+                <circle cx="76" cy="76" r="64" fill="none" stroke="rgba(29,29,31,.08)" strokeWidth="16"></circle>
+                <g style={{ transform: 'rotate(-90deg)', transformOrigin: '76px 76px' }}>
+                  {segArcs.map((a, i) => (
+                    <circle key={i} cx="76" cy="76" r="64" fill="none" stroke={a.color} strokeWidth="16" strokeLinecap="round" strokeDasharray={a.dasharray} strokeDashoffset={a.dashoffset} style={{ transition: 'stroke-dasharray 1.1s cubic-bezier(.32,.72,0,1), stroke-dashoffset 1.1s cubic-bezier(.32,.72,0,1)' }}></circle>
+                  ))}
+                </g>
+              </svg>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+                {segLegend.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '13.5px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(29,29,31,.75)' }}>
+                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }}></span>{s.label}
+                    </div>
+                    <div style={{ fontVariantNumeric: 'tabular-nums', fontWeight: '600', color: '#1D1D1F' }}>{s.pct}%</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Balance band bars */}
+          <div style={{ gridColumn: 'span 8', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Outstanding by Balance Band</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '20px' }}>Total outstanding value per current balance band</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {bandBars.map((b, i) => (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
+                    <span style={{ color: 'rgba(29,29,31,.68)' }}>{b.label}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: '600', color: '#1D1D1F' }}>{b.formatted} · {b.count} accts</span>
+                  </div>
+                  <div style={{ height: '10px', borderRadius: '6px', background: 'rgba(29,29,31,.07)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: '6px', width: `${b.pct}%`, background: b.color, transition: 'width 1.1s cubic-bezier(.32,.72,0,1)' }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Region */}
+          <div style={{ gridColumn: 'span 4', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Regional Split</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '20px' }}>Outstanding value by region</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {regionBars.map((r, i) => (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
+                    <span style={{ color: 'rgba(29,29,31,.68)' }}>{r.label}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: '600', color: '#1D1D1F' }}>{r.formatted}</span>
+                  </div>
+                  <div style={{ height: '10px', borderRadius: '6px', background: 'rgba(29,29,31,.07)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: '6px', width: `${r.pct}%`, background: r.color, transition: 'width 1.1s cubic-bezier(.32,.72,0,1)' }}></div>
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'rgba(29,29,31,.42)', marginTop: '4px' }}>{r.count} accounts</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Strategy bars */}
+          <div style={{ gridColumn: 'span 4', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Recovery Strategy</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '16px' }}>Classification logic, V1 vs M2</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {strategyBars.map((s, i) => (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '5px' }}>
+                    <span style={{ color: 'rgba(29,29,31,.68)' }}>{s.label}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: '600', color: '#1D1D1F' }}>{s.v1} / {s.m2}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px', height: '8px' }}>
+                    <div style={{ height: '100%', borderRadius: '4px', width: `${s.v1pct}%`, background: s.color }}></div>
+                    <div style={{ height: '100%', borderRadius: '4px', width: `${s.m2pct}%`, background: s.color, opacity: 0.4 }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.4)', marginTop: '14px' }}>Solid = V1 · Faded = M2</div>
+          </div>
+
+          {/* Decile */}
+          <div style={{ gridColumn: 'span 4', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Decile Distribution</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '18px' }}>Accounts scored per collectability decile</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '6px', height: '120px' }}>
+              {decileBars.map((d, i) => (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: '6px' }}>
+                  <div style={{ fontSize: '10.5px', color: 'rgba(29,29,31,.5)', fontVariantNumeric: 'tabular-nums' }}>{d.count}</div>
+                  <div style={{ width: '100%', borderRadius: '5px 5px 2px 2px', height: `${d.pct}%`, background: d.color, transition: 'height 1.1s cubic-bezier(.32,.72,0,1)' }}></div>
+                  <div style={{ fontSize: '10.5px', color: 'rgba(29,29,31,.45)' }}>D{d.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* States */}
+          <div style={{ gridColumn: 'span 6', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Top States by Outstanding</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '18px' }}>Primary registered state</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              {stateBars.map((s, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '112px', fontSize: '13px', color: 'rgba(29,29,31,.72)', flex: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</div>
+                  <div style={{ flex: 1, height: '9px', borderRadius: '5px', background: 'rgba(29,29,31,.07)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: '5px', width: `${s.pct}%`, background: 'linear-gradient(90deg,#0071E3,#5AC8FA)', transition: 'width 1.1s cubic-bezier(.32,.72,0,1)' }}></div>
+                  </div>
+                  <div style={{ width: '76px', textAlign: 'right', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums', color: 'rgba(29,29,31,.85)', flex: 'none' }}>{s.formatted}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Cities */}
+          <div style={{ gridColumn: 'span 6', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Top Cities by Outstanding</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '18px' }}>Communication city on file</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              {cityBars.map((c, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '112px', fontSize: '13px', color: 'rgba(29,29,31,.72)', flex: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</div>
+                  <div style={{ flex: 1, height: '9px', borderRadius: '5px', background: 'rgba(29,29,31,.07)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: '5px', width: `${c.pct}%`, background: 'linear-gradient(90deg,#5856D6,#AF52DE)', transition: 'width 1.1s cubic-bezier(.32,.72,0,1)' }}></div>
+                  </div>
+                  <div style={{ width: '76px', textAlign: 'right', fontSize: '12.5px', fontVariantNumeric: 'tabular-nums', color: 'rgba(29,29,31,.85)', flex: 'none' }}>{c.formatted}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recency */}
+          <div style={{ gridColumn: 'span 5', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Last Payment Recency</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '18px' }}>Days since last payment, relative to due date</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {recencyBars.map((r, i) => (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '6px' }}>
+                    <span style={{ color: 'rgba(29,29,31,.68)' }}>{r.label}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: '600', color: '#1D1D1F' }}>{r.count}</span>
+                  </div>
+                  <div style={{ height: '9px', borderRadius: '5px', background: 'rgba(29,29,31,.07)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: '5px', width: `${r.pct}%`, background: r.color, transition: 'width 1.1s cubic-bezier(.32,.72,0,1)' }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* MOB */}
+          <div style={{ gridColumn: 'span 7', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Months on Book</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '18px' }}>Tenure of the credit relationship</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px', height: '110px' }}>
+              {mobBars.map((m, i) => (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: '6px' }}>
+                  <div style={{ fontSize: '10.5px', color: 'rgba(29,29,31,.5)', fontVariantNumeric: 'tabular-nums' }}>{m.count}</div>
+                  <div style={{ width: '100%', borderRadius: '5px 5px 2px 2px', height: `${m.pct}%`, background: m.color, transition: 'height 1.1s cubic-bezier(.32,.72,0,1)' }}></div>
+                  <div style={{ fontSize: '10px', color: 'rgba(29,29,31,.45)', textAlign: 'center' }}>{m.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Segment x Region matrix */}
+          <div style={{ gridColumn: 'span 12', background: 'linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.42))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '24px', padding: '26px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.15)' }}>
+            <div style={{ fontSize: '15px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Risk Segment × Region</div>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)', marginBottom: '20px' }}>Account count per cell</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px repeat(3, 1fr)', gap: '8px' }}>
+              <div></div>
+              {['Green', 'Orange', 'Red'].map((s, i) => (
+                <div key={i} style={{ textAlign: 'center', fontSize: '12.5px', fontWeight: '600', color: SEG_COLORS[s] }}>{s}</div>
+              ))}
+              {matrixRows.map((row, i) => (
+                <div key={i} style={{ display: 'contents' }}>
+                  <div style={{ fontSize: '13px', color: 'rgba(29,29,31,.68)', alignSelf: 'center' }}>{row.label}</div>
+                  {row.cells.map((cell, cIdx) => (
+                    <div key={cIdx} style={{ borderRadius: '12px', padding: '14px 8px', textAlign: 'center', background: cell.bg, border: '1px solid rgba(29,29,31,.06)' }}>
+                      <div style={{ fontSize: '20px', fontWeight: '700', fontVariantNumeric: 'tabular-nums', color: '#1D1D1F' }}>{cell.count}</div>
+                      <div style={{ fontSize: '10.5px', color: 'rgba(29,29,31,.45)', marginTop: '2px' }}>{cell.pct}%</div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+
+        {/* ================= DATA EXPLORER ================= */}
+        <div style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.72), rgba(255,255,255,.4))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '26px', padding: '28px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 44px -22px rgba(29,29,31,.16)', marginTop: '8px' }}>
+          <div style={{ marginBottom: '18px' }}>
+            <div style={{ fontSize: '19px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Account Explorer</div>
+            <div style={{ fontSize: '13px', color: 'rgba(29,29,31,.5)', maxWidth: '640px', lineHeight: 1.5 }}>
+              {fmtInt(sortedRows.length)} of {totalAccountsStr} accounts · search matches name, account no., mobile, alternate numbers, card, city, state, segment, region, band, decile & strategy
+            </div>
+          </div>
+
+          {/* Control deck */}
+          <div style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.65), rgba(255,255,255,.35))', border: '1px solid rgba(255,255,255,.75)', borderRadius: '20px', padding: '18px', marginBottom: '22px', boxShadow: '0 1px 0 rgba(255,255,255,.85) inset, 0 14px 30px -18px rgba(29,29,31,.15)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+            <input
+              type="text"
+              placeholder="Search anything: name, account, mobile, alt no., city, state..."
+              value={q}
+              onChange={(e) => { setQ(e.target.value); setPage(0); }}
+              style={{ width: '100%', background: 'rgba(255,255,255,.75)', border: '1px solid rgba(29,29,31,.1)', borderRadius: '12px', padding: '12px 16px', fontSize: '14px', color: '#1D1D1F', outline: 'none', fontFamily: 'inherit' }}
+            />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', display: 'flex', background: 'rgba(29,29,31,.055)', borderRadius: '11px', padding: '3px', gap: '2px' }}>
+                {['All', 'Green', 'Orange', 'Red'].map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setSeg(s); setPage(0); }}
+                    style={{ border: 'none', cursor: 'pointer', padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: '600', fontFamily: 'inherit', background: seg === s ? (SEG_COLORS[s] || '#0071E3') : 'transparent', color: seg === s ? '#fff' : 'rgba(29,29,31,.62)', transition: 'background .3s, color .3s' }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <div style={{ width: '1px', height: '22px', background: 'rgba(29,29,31,.1)' }}></div>
+              <div style={{ position: 'relative', display: 'flex', background: 'rgba(29,29,31,.055)', borderRadius: '11px', padding: '3px', gap: '2px' }}>
+                {['All', ...REGION_ORDER].map((r, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setRegion(r); setPage(0); }}
+                    style={{ border: 'none', cursor: 'pointer', padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: '600', fontFamily: 'inherit', background: region === r ? '#0071E3' : 'transparent', color: region === r ? '#fff' : 'rgba(29,29,31,.62)', transition: 'background .3s, color .3s' }}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleResetFilters}
+                style={{ marginLeft: 'auto', border: '1px solid rgba(29,29,31,.14)', background: 'transparent', color: 'rgba(29,29,31,.6)', cursor: 'pointer', padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', fontFamily: 'inherit' }}
+              >
+                Reset all
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <select value={band} onChange={(e) => { setBand(e.target.value); setPage(0); }} style={{ background: 'rgba(255,255,255,.75)', border: '1px solid rgba(29,29,31,.12)', borderRadius: '10px', padding: '8px 30px 8px 12px', fontSize: '12.5px', fontWeight: 500, fontFamily: 'inherit', color: '#1D1D1F', cursor: 'pointer' }}>
+                {bandOptions.map((o, i) => (
+                  <option key={i} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <select value={decile} onChange={(e) => { setDecile(e.target.value); setPage(0); }} style={{ background: 'rgba(255,255,255,.75)', border: '1px solid rgba(29,29,31,.12)', borderRadius: '10px', padding: '8px 30px 8px 12px', fontSize: '12.5px', fontWeight: 500, fontFamily: 'inherit', color: '#1D1D1F', cursor: 'pointer' }}>
+                {decileOptions.map((o, i) => (
+                  <option key={i} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <select value={strategy} onChange={(e) => { setStrategy(e.target.value); setPage(0); }} style={{ background: 'rgba(255,255,255,.75)', border: '1px solid rgba(29,29,31,.12)', borderRadius: '10px', padding: '8px 30px 8px 12px', fontSize: '12.5px', fontWeight: 500, fontFamily: 'inherit', color: '#1D1D1F', cursor: 'pointer' }}>
+                {strategyOptions.map((o, i) => (
+                  <option key={i} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <select value={pstate} onChange={(e) => { setPstate(e.target.value); setPage(0); }} style={{ background: 'rgba(255,255,255,.75)', border: '1px solid rgba(29,29,31,.12)', borderRadius: '10px', padding: '8px 30px 8px 12px', fontSize: '12.5px', fontWeight: 500, fontFamily: 'inherit', color: '#1D1D1F', cursor: 'pointer', maxWidth: '180px' }}>
+                {stateOptions.map((o, i) => (
+                  <option key={i} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <select value={city} onChange={(e) => { setCity(e.target.value); setPage(0); }} style={{ background: 'rgba(255,255,255,.75)', border: '1px solid rgba(29,29,31,.12)', borderRadius: '10px', padding: '8px 30px 8px 12px', fontSize: '12.5px', fontWeight: 500, fontFamily: 'inherit', color: '#1D1D1F', cursor: 'pointer', maxWidth: '180px' }}>
+                {cityOptions.map((o, i) => (
+                  <option key={i} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '12px', color: 'rgba(29,29,31,.48)' }}>Sort by</span>
+              {[
+                { key: 'out', label: 'Outstanding' },
+                { key: 'due', label: 'Amount Due' },
+                { key: 'mob', label: 'MOB' },
+                { key: 'decile', label: 'Decile' },
+                { key: 'name', label: 'Name' },
+              ].map((d, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSetSort(d.key)}
+                  style={{ border: 'none', cursor: 'pointer', padding: '7px 12px', borderRadius: '8px', fontSize: '12.5px', fontWeight: '600', fontFamily: 'inherit', background: sortKey === d.key ? 'rgba(0,113,227,.14)' : 'transparent', color: sortKey === d.key ? '#0071E3' : 'rgba(29,29,31,.58)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  {d.label}
+                  <span>{sortKey === d.key ? (sortDir === 'desc' ? '↓' : '↑') : ''}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Accounts list Table */}
+          <div style={{ overflowX: 'auto', borderRadius: '16px', border: '1px solid rgba(29,29,31,.08)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
+              <thead>
+                <tr style={{ background: 'rgba(29,29,31,.035)' }}>
+                  <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Customer</th>
+                  <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Account</th>
+                  <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Segment</th>
+                  <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Region</th>
+                  <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Balance Band</th>
+                  <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Outstanding</th>
+                  <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Amount Due</th>
+                  <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Last Payment</th>
+                  <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>MOB</th>
+                  <th style={{ width: '36px' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((item, index) => (
+                  <Fragment key={index}>
+                    <tr className="hover-row" onClick={item.toggle} style={{ borderTop: '1px solid rgba(29,29,31,.07)', cursor: 'pointer', transition: 'background .2s' }}>
+                      <td style={{ padding: '13px 14px' }}>
+                        <div style={{ fontWeight: '600', color: '#1D1D1F' }}>{item.name}</div>
+                        <div style={{ fontSize: '12px', color: 'rgba(29,29,31,.42)', marginTop: '2px' }}>{item.mobile}</div>
+                      </td>
+                      <td style={{ padding: '13px 14px', color: 'rgba(29,29,31,.6)', fontVariantNumeric: 'tabular-nums', fontSize: '12.5px' }}>{item.acctMasked}</td>
+                      <td style={{ padding: '13px 14px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', background: item.segBg, color: item.segColor }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: item.segColor }}></span>{item.segment}
+                        </span>
+                      </td>
+                      <td style={{ padding: '13px 14px', color: 'rgba(29,29,31,.75)' }}>{item.region}</td>
+                      <td style={{ padding: '13px 14px', color: 'rgba(29,29,31,.75)' }}>{item.band}</td>
+                      <td style={{ padding: '13px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: '600', color: '#1D1D1F' }}>{item.outFmt}</td>
+                      <td style={{ padding: '13px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'rgba(29,29,31,.78)' }}>{item.dueFmt}</td>
+                      <td style={{ padding: '13px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'rgba(29,29,31,.62)', fontSize: '12.5px' }}>{item.lastPayFmt}</td>
+                      <td style={{ padding: '13px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'rgba(29,29,31,.62)' }}>{item.mob}</td>
+                      <td style={{ padding: '13px 14px', textAlign: 'center', color: 'rgba(29,29,31,.35)', transform: item.isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .3s' }}>›</td>
+                    </tr>
+                    {item.isExpanded && (
+                      <tr style={{ background: 'rgba(29,29,31,.025)' }}>
+                        <td colSpan="10" style={{ padding: '22px 28px 26px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px 28px' }}>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Account No.</div>
+                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '13.5px', color: '#1D1D1F' }}>{item.acctFull}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Bill Cycle</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.billCycle}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Portfolio (PDD)</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.portfolioConst}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>AI Agency</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.aiAgencyConst}</div>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Total Outstanding</div>
+                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '13.5px', color: '#1D1D1F' }}>{item.outExact}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Total Amount Due</div>
+                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '13.5px', color: '#1D1D1F' }}>{item.dueExact}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Minimum Amount Due</div>
+                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '13.5px', color: '#1D1D1F' }}>{item.minDueFmt}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Total Accounts with Customer</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.linkedAccts}</div>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Due Date</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.dueDateConst}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Last Payment Date</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.lastPayDateOnly}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Last Payment Amount</div>
+                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '13.5px', color: '#1D1D1F' }}>{item.lastPayAmtFmt}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Last Payment Mode</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.lastPayModeConst}</div>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>EMI Amount</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.emiConst}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Months on Book</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.mob}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Card (Last 4)</div>
+                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '13.5px', color: '#1D1D1F' }}>•••• {item.card4}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Current Balance Band</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.band}</div>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Segment</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.segment}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Title</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.title}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Customer Name</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.name}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Gender</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.genderConst}</div>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Primary State</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.primaryState}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Mobile Number</div>
+                              <div style={{ fontVariantNumeric: 'tabular-nums', fontSize: '13.5px', color: '#1D1D1F' }}>{item.mobile}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Decile</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.decile}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>Region</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.region}</div>
+                            </div>
+
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>As Per New Logic (V1)</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.strategy}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>As Per New Logic M2</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.strategyM2}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>pm_city</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.pmCity}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '4px' }}>pm_state</div>
+                              <div style={{ fontSize: '13.5px', color: '#1D1D1F' }}>{item.pmState}</div>
+                            </div>
+
+                            <div style={{ gridColumn: 'span 2' }}>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '6px' }}>Alternate Numbers</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                {item.altChips.map((altNum, chipIdx) => (
+                                  <span key={chipIdx} style={{ background: 'rgba(29,29,31,.05)', border: '1px solid rgba(29,29,31,.08)', borderRadius: '7px', padding: '4px 9px', fontSize: '12px', fontVariantNumeric: 'tabular-nums', color: '#1D1D1F' }}>{altNum}</span>
+                                ))}
+                                {item.noAlt && <span style={{ fontSize: '12px', color: 'rgba(29,29,31,.35)' }}>None on file</span>}
+                              </div>
+                            </div>
+                            <div style={{ gridColumn: 'span 2' }}>
+                              <div style={{ fontSize: '11px', color: 'rgba(29,29,31,.42)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: '6px' }}>Payment Status History (raw codes, oldest → latest)</div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                {item.dhChips.map((dh, dhIdx) => (
+                                  <span key={dhIdx} style={{ width: '18px', height: '18px', borderRadius: '4px', background: dh.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: 'rgba(0,0,0,.6)' }}>{dh.ch}</span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '18px' }}>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)' }}>Page {currentPage + 1} of {totalPages}</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+                style={{ border: '1px solid rgba(29,29,31,.14)', background: 'rgba(255,255,255,.6)', color: currentPage === 0 ? 'rgba(29,29,31,.3)' : 'rgba(29,29,31,.85)', cursor: currentPage === 0 ? 'default' : 'pointer', padding: '8px 16px', borderRadius: '9px', fontSize: '13px', fontFamily: 'inherit' }}
+              >
+                ← Previous
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={currentPage >= totalPages - 1}
+                style={{ border: '1px solid rgba(29,29,31,.14)', background: 'rgba(255,255,255,.6)', color: currentPage >= totalPages - 1 ? 'rgba(29,29,31,.3)' : 'rgba(29,29,31,.85)', cursor: currentPage >= totalPages - 1 ? 'default' : 'pointer', padding: '8px 16px', borderRadius: '9px', fontSize: '13px', fontFamily: 'inherit' }}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ================= STATUS EXPLORER (7 JULY) ================= */}
+        <div style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.72), rgba(255,255,255,.4))', border: '1px solid rgba(255,255,255,.85)', borderRadius: '26px', padding: '28px', backdropFilter: 'blur(36px) saturate(180%)', boxShadow: '0 1px 0 rgba(255,255,255,.9) inset, 0 20px 44px -22px rgba(29,29,31,.16)', marginTop: '24px' }}>
+          <div style={{ marginBottom: '18px' }}>
+            <div style={{ fontSize: '19px', fontWeight: '600', marginBottom: '2px', color: '#1D1D1F' }}>Status Explorer (7 July)</div>
+            <div style={{ fontSize: '13px', color: 'rgba(29,29,31,.5)', maxWidth: '640px', lineHeight: 1.5 }}>
+              {fmtInt(statusTotal)} matching status records · search matches account number and filter by status
+            </div>
+          </div>
+
+          {/* Data Insights Section */}
+          <div style={{ background: 'rgba(255,255,255,.3)', border: '1px solid rgba(255,255,255,.5)', borderRadius: '20px', padding: '20px', marginBottom: '22px', boxShadow: '0 1px 0 rgba(255,255,255,.7) inset, 0 10px 24px -12px rgba(29,29,31,.08)' }}>
+            <div style={{ fontSize: '12px', fontWeight: '600', letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(29,29,31,.45)', marginBottom: '12px' }}>7 July Status File Insights</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }}>
+              <div style={{ background: 'rgba(29,29,31,.02)', border: '1px solid rgba(29,29,31,.05)', borderRadius: '14px', padding: '14px 16px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '600', color: 'rgba(29,29,31,.4)', marginBottom: '4px' }}>OVERALL MASTER DATABASE RESOLUTION</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#34C759' }}>64.2%</span>
+                  <span style={{ fontSize: '12px', color: 'rgba(29,29,31,.6)' }}>Resolved (234,749 accounts)</span>
+                </div>
+                <div style={{ fontSize: '12px', color: 'rgba(29,29,31,.5)', marginTop: '6px', lineHeight: '1.4' }}>
+                  35.8% Unresolved (130,691 accounts) out of 365,440 total records in the status file.
+                </div>
+              </div>
+              <div style={{ background: 'rgba(29,29,31,.02)', border: '1px solid rgba(29,29,31,.05)', borderRadius: '14px', padding: '14px 16px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '600', color: 'rgba(29,29,31,.4)', marginBottom: '4px' }}>PDD+4 ACTIVE PORTFOLIO MATCH</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#FF9500' }}>33.9%</span>
+                  <span style={{ fontSize: '12px', color: 'rgba(29,29,31,.6)' }}>Resolved (870 / 2,563 accounts)</span>
+                </div>
+                <div style={{ fontSize: '12px', color: 'rgba(29,29,31,.5)', marginTop: '6px', lineHeight: '1.4' }}>
+                  66.1% Unresolved (1,693 accounts). High-risk delinquent accounts require active collection focus.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div style={{ background: 'linear-gradient(180deg, rgba(255,255,255,.65), rgba(255,255,255,.35))', border: '1px solid rgba(255,255,255,.75)', borderRadius: '20px', padding: '18px', marginBottom: '22px', boxShadow: '0 1px 0 rgba(255,255,255,.85) inset, 0 14px 30px -18px rgba(29,29,31,.15)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <input
+              type="text"
+              placeholder="Search account number..."
+              value={statusQ}
+              onChange={(e) => { setStatusQ(e.target.value); setStatusPage(0); }}
+              style={{ width: '100%', background: 'rgba(255,255,255,.75)', border: '1px solid rgba(29,29,31,.1)', borderRadius: '12px', padding: '12px 16px', fontSize: '14px', color: '#1D1D1F', outline: 'none', fontFamily: 'inherit' }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', display: 'flex', background: 'rgba(29,29,31,.055)', borderRadius: '11px', padding: '3px', gap: '2px' }}>
+                {['All', 'Resolved', 'Unresolved'].map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setStatusFilter(s); setStatusPage(0); }}
+                    style={{ border: 'none', cursor: 'pointer', padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', fontWeight: '600', fontFamily: 'inherit', background: statusFilter === s ? (s === 'Resolved' ? '#34C759' : s === 'Unresolved' ? '#FF3B30' : '#0071E3') : 'transparent', color: statusFilter === s ? '#fff' : 'rgba(29,29,31,.62)', transition: 'background .3s, color .3s' }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { setStatusQ(''); setStatusFilter('All'); setStatusPage(0); }}
+                style={{ marginLeft: 'auto', border: '1px solid rgba(29,29,31,.14)', background: 'transparent', color: 'rgba(29,29,31,.6)', cursor: 'pointer', padding: '7px 14px', borderRadius: '8px', fontSize: '12.5px', fontFamily: 'inherit' }}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div style={{ overflowX: 'auto', borderRadius: '16px', border: '1px solid rgba(29,29,31,.08)' }}>
+            {statusLoading && statusRows.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'rgba(29,29,31,.5)' }}>Loading status records...</div>
+            ) : statusRows.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'rgba(29,29,31,.5)' }}>No matching status records found</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
+                <thead>
+                  <tr style={{ background: 'rgba(29,29,31,.035)' }}>
+                    <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Account Number</th>
+                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: '600', color: 'rgba(29,29,31,.5)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '.04em' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statusRows.map(([acct, statusVal], idx) => (
+                    <tr key={idx} className="hover-row" style={{ borderTop: '1px solid rgba(29,29,31,.07)', transition: 'background .2s' }}>
+                      <td style={{ padding: '13px 14px', fontVariantNumeric: 'tabular-nums', fontWeight: '500', color: '#1D1D1F' }}>
+                        {acct}
+                      </td>
+                      <td style={{ padding: '13px 14px', textAlign: 'right' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', borderRadius: '7px', fontSize: '12px', fontWeight: '600', background: statusVal === 'Resolved' ? 'rgba(52,199,89,.15)' : 'rgba(255,59,48,.15)', color: statusVal === 'Resolved' ? '#34C759' : '#FF3B30' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusVal === 'Resolved' ? '#34C759' : '#FF3B30' }}></span>
+                          {statusVal}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Pagination */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '18px' }}>
+            <div style={{ fontSize: '12.5px', color: 'rgba(29,29,31,.48)' }}>Page {statusPage + 1} of {statusTotalPages}</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                onClick={() => setStatusPage(p => Math.max(0, p - 1))}
+                disabled={statusPage === 0 || statusLoading}
+                style={{ border: '1px solid rgba(29,29,31,.14)', background: 'rgba(255,255,255,.6)', color: (statusPage === 0 || statusLoading) ? 'rgba(29,29,31,.3)' : 'rgba(29,29,31,.85)', cursor: (statusPage === 0 || statusLoading) ? 'default' : 'pointer', padding: '8px 16px', borderRadius: '9px', fontSize: '13px', fontFamily: 'inherit' }}
+              >
+                ← Previous
+              </button>
+              <button
+                onClick={() => setStatusPage(p => Math.min(statusTotalPages - 1, p + 1))}
+                disabled={statusPage >= statusTotalPages - 1 || statusLoading}
+                style={{ border: '1px solid rgba(29,29,31,.14)', background: 'rgba(255,255,255,.6)', color: (statusPage >= statusTotalPages - 1 || statusLoading) ? 'rgba(29,29,31,.3)' : 'rgba(29,29,31,.85)', cursor: (statusPage >= statusTotalPages - 1 || statusLoading) ? 'default' : 'pointer', padding: '8px 16px', borderRadius: '9px', fontSize: '13px', fontFamily: 'inherit' }}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ================= FOOTER ================= */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', padding: '32px 4px 0', fontSize: '12px', color: 'rgba(29,29,31,.4)' }}>
+          <div>Portfolio PDD+4 · Bill Cycle 12 · Serviced by Convin AI · {totalAccountsStr} accounts · Due 02 Jul 2026</div>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <span>Confidential — internal use only</span>
+            <span style={{ height: '3px', width: '3px', borderRadius: '50%', background: 'rgba(29,29,31,.3)' }}></span>
+            <span style={{ fontWeight: '600', color: 'rgba(29,29,31,.7)' }}>Engineered by RoSh</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  );
+}

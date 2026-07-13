@@ -1,0 +1,47 @@
+{
+  "name": "apple-styled-data-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "seed": "node seed_local.mjs",
+    "db:setup": "node migrate.mjs",
+    "ingest": "node ingest.mjs",
+    "rebuild": "node rebuild_local.mjs",
+    "eval": "node eval_model.mjs",
+    "eval:reports": "node evals/generate_reports.mjs",
+    "eval:export": "node evals/export_cases.mjs && node evals/export_sweep.mjs",
+    "eval:sweep": "python3 evals/eval_sweep.py",
+    "eval:holdout": "python3 evals/eval_roshregression.py",
+    "eval:llm": "python3 evals/eval_llm_sweep.py",
+    "test:stress": "node evals/stress_test.mjs && node evals/stress_merge_rows.mjs",
+    "check:pii": "node scripts/check_pii.mjs",
+    "demo": "node evals/synth_book.mjs 2000 && node scripts/seed_demo.mjs",
+    "demo:real": "node scripts/seed_presentation.mjs",
+    "preflight": "node scripts/preflight.mjs",
+    "explain": "node scripts/explain_model.mjs",
+    "diagnose": "node scripts/diagnose_join.mjs",
+    "wipe": "node scripts/wipe.mjs",
+    "test:keys": "node evals/stress_keys.mjs",
+    "test:all": "node evals/stress_keys.mjs && node evals/stress_merge_rows.mjs && node evals/stress_test.mjs",
+    "push": "node scripts/push.mjs",
+    "db:schema": "psql \"$DATABASE_URL\" -f db/postgres/schema.sql",
+    "dev:next": "next dev"
+  },
+  "dependencies": {
+    "next": "16.2.10",
+    "pg": "^8.13.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.10",
+    "tailwindcss": "^4"
+  }
+}
