@@ -343,12 +343,52 @@ function SummaryView({ s }) {
           {' '}{fmtCr(t.outstandingPending)} still open across {fmtInt(t.unresolved)} accounts.
           {multi && (
             <>
-              {' '}Figures are the <b>union of every report date</b>, not a sum — each date re-reads the same book,
-              so the money is counted once.
+              {' '}These are the figures for the <b>current book</b> — the latest report date. Outstanding is what sits
+              on the book <i>now</i>; it is never summed across dates, because reading the same book twice does not
+              double the debt.
             </>
           )}
         </p>
       </div>
+
+      {/* ── Carry-over ──────────────────────────────────────────────────────────
+          Accounts worked on an earlier date that are NOT in the current book — the
+          previous cycle, if a new one has started.
+
+          Shown BESIDE the headline, never inside it. Folding these into "total
+          outstanding" would make the number grow every time a new cycle arrives, which
+          is exactly the thing an exec would (rightly) call wrong: outstanding means
+          "what is on the book", and the book is the current one.
+
+          Zero when every date is a re-read of the same cycle — which is the normal
+          case, and then this does not render at all. */}
+      {s.carry && (
+        <Card span={12} style={{ marginBottom: 16 }}>
+          <Title
+            t="Earlier cycles — not in the current book"
+            s="Worked on a previous report date, and deliberately NOT added to the totals above"
+          />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'baseline', marginTop: 2 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: txt(.45), marginBottom: 5 }}>Accounts</div>
+              <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(s.carry.accounts)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: txt(.45), marginBottom: 5 }}>Their outstanding</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.orange, fontVariantNumeric: 'tabular-nums' }}>{fmtCr(s.carry.outstanding)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: txt(.45), marginBottom: 5 }}>Recovered from them</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.green, fontVariantNumeric: 'tabular-nums' }}>{fmtCr(s.carry.recovered)}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: txt(.5), lineHeight: 1.6, marginTop: 14 }}>
+            These accounts appear on {s.carry.dates.map((d) => d.display).join(', ')} but not in the current book.
+            They are <b>not</b> included in the totals above — outstanding is what is on the book today, and adding a
+            previous cycle to it would inflate the figure every time RBL sends a new one.
+          </div>
+        </Card>
+      )}
 
       {/* ── Headline ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 16 }}>

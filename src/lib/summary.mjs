@@ -16,13 +16,16 @@
  * and it is far more dangerous here, because a campaign roll-up is the number an exec
  * repeats out loud.
  *
- * The rule is the same one Day Total uses, applied a level up:
+ * The rule, in two parts:
  *
- *     the campaign is the UNION of accounts across every date, newest date wins.
+ *   1. Within a date, and across re-reads of the same book: UNION by account, newest
+ *      wins. Re-pull the same book ten times and the money does not move.
  *
- * Union, not sum. Re-pull the same book ten times and the money does not move.
- * Send a genuinely new cycle and its accounts are added, because they are new accounts.
- * Both cases are correct, and neither needs a special case.
+ *   2. The HEADLINE is the CURRENT BOOK — the latest report date. Outstanding is a
+ *      STOCK: the debt on the book right now. You do not add a stock to itself across
+ *      time, any more than you add January's bank balance to February's. A genuinely new
+ *      cycle does not make the outstanding bigger; it REPLACES the book. The previous
+ *      cycle is reported separately, as carry-over, and never folded into the total.
  *
  * This file does NOT do the union — backend.mjs does, because only it can reach the
  * rows. This file takes the already-unioned campaign payload plus each day's stored
@@ -229,8 +232,18 @@ export function buildActions(campaign) {
   };
 }
 
-/** Roll it all together. `campaign` is the union-of-all-dates payload. */
-export function buildSummary({ campaign, days }) {
+/**
+ * Roll it all together.
+ *
+ * `campaign` is the CURRENT BOOK — the latest report date. Not a union across dates, and
+ * emphatically not a sum of them. Outstanding is a stock: it is what sits on the book
+ * right now, and it does not grow because you read the book twice. See backend.mjs.
+ *
+ * `carry` is anything worked on an earlier date that is NOT in the current book — the
+ * previous cycle, if a new one has started. Reported beside the headline, never inside
+ * it. Null when every date is a re-read of the same book, which is the normal case.
+ */
+export function buildSummary({ campaign, days, carry = null }) {
   const trend = buildTrend(days);
   const first = trend[0];
   const last = trend[trend.length - 1];
@@ -245,6 +258,7 @@ export function buildSummary({ campaign, days }) {
     generatedAt: new Date().toISOString(),
     days: trend.length,
     trend,
+    carry,
     movement: comparable
       ? {
         from: first.display,

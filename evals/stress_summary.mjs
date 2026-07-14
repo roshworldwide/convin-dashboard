@@ -62,15 +62,16 @@ const ok = (label, cond, detail = '') => {
   const days = books.map((rows, i) => ({
     date: `2026-07-0${4 + i}`, display: `${4 + i} July 2026`, payload: pay(rows, `${4 + i} July 2026`, CYC),
   }));
+  // Same book three times: the union and the latest book are the same 1,000 accounts.
   const campaign = pay(union(books), 'campaign', CYC);
   const s = buildSummary({ campaign, days });
   const t = s.campaign.agg.totals;
 
   const naive = s.trend.reduce((a, d) => a + d.recovered, 0);
 
-  ok('the campaign is a UNION, not a sum — accounts', t.accounts === 1000,
-    `got ${t.accounts}, expected 1,000 (a sum would give 3,000)`);
-  ok('the campaign is a UNION, not a sum — money', t.recovered === 600 * 100000,
+  ok('re-reading one book never multiplies the accounts', t.accounts === 1000,
+    `got ${t.accounts}, expected 1,000 (a sum across the 3 dates would give 3,000)`);
+  ok('re-reading one book never multiplies the money', t.recovered === 600 * 100000,
     `got ₹${(t.recovered / 1e7).toFixed(2)} Cr, expected ₹6.00 Cr (the naive sum gives ₹${(naive / 1e7).toFixed(2)} Cr)`);
   ok('recovered can never exceed the book', t.recovered <= t.sumOut,
     `recovered ${t.recovered} > outstanding ${t.sumOut}`);
@@ -85,27 +86,60 @@ const ok = (label, cond, detail = '') => {
     `trend = ${JSON.stringify(s.trend.map((d) => d.date))}`);
 }
 
-/* ── 2. A genuinely NEW book (a different CYC cycle). Its accounts must be ADDED —
-       they are different customers — and no movement should be claimed, because
-       comparing two different books and calling the difference "progress" is a lie. ── */
+/* ── 2. A genuinely NEW cycle. Its accounts must NOT be added to the headline.
+       Outstanding is a STOCK — the debt on the book right now. Adding last cycle's
+       outstanding to this cycle's makes the total grow every time RBL sends a new
+       book, which is the number an exec would call wrong on sight. The previous cycle
+       is reported as CARRY-OVER, beside the headline, never inside it. ── */
 {
-  const july = Array.from({ length: 500 }, (_, i) => row('J' + i, i < 100));
-  const august = Array.from({ length: 400 }, (_, i) => row('G' + i, i < 50));
+  const july = Array.from({ length: 500 }, (_, i) => row('J' + i, i < 100));      // ₹5 Cr book
+  const august = Array.from({ length: 400 }, (_, i) => row('G' + i, i < 50));     // ₹4 Cr book
   const days = [
     { date: '2026-07-04', display: '4 July 2026', payload: pay(july, '4 July 2026', CYC) },
     { date: '2026-08-04', display: '4 August 2026', payload: pay(august, '4 August 2026', OTHER) },
   ];
-  const campaign = pay(union([july, august]), 'campaign', CYC);
-  const s = buildSummary({ campaign, days });
 
-  ok('a different cycle ADDS its accounts (they are different customers)',
-    s.campaign.agg.totals.accounts === 900,
-    `got ${s.campaign.agg.totals.accounts}, expected 900`);
+  // Exactly what backend.mjs now does: the headline is the LATEST book.
+  const campaign = pay(august, '4 August 2026', OTHER);
+  const carry = {
+    accounts: july.length,
+    outstanding: july.reduce((a, r) => a + r.total_outstanding, 0),
+    recovered: july.filter((r) => r.status === 'Resolved').reduce((a, r) => a + r.total_outstanding, 0),
+    dates: [{ date: '2026-07-04', display: '4 July 2026', accounts: july.length }],
+  };
+  const s = buildSummary({ campaign, days, carry });
+  const t = s.campaign.agg.totals;
+
+  ok('a new cycle does NOT inflate the headline account count', t.accounts === 400,
+    `got ${t.accounts}, expected 400 (the current book). A union would have said 900.`);
+  ok('a new cycle does NOT inflate total outstanding', t.sumOut === 400 * 100000,
+    `got ₹${(t.sumOut / 1e7).toFixed(2)} Cr, expected ₹4.00 Cr. A union would have said ₹9.00 Cr.`);
+  ok('the headline never exceeds the latest book', t.sumOut <= 400 * 100000,
+    'outstanding grew beyond the current book — a stock was summed across time');
+  ok('the previous cycle is REPORTED, not discarded', s.carry?.accounts === 500,
+    `carry = ${JSON.stringify(s.carry)}`);
+  ok('the previous cycle keeps its own outstanding', s.carry?.outstanding === 500 * 100000,
+    `carry.outstanding = ${s.carry?.outstanding}`);
   ok('no movement is claimed across two different books', s.movement === null,
     'movement was reported between two different CYC files — that is not progress, it is a different book');
   ok('the trend marks the new book rather than inventing a delta',
     s.trend[1].sameBook === false && !s.trend[1].recoveredDelta,
     `trend[1] = ${JSON.stringify(s.trend[1])}`);
+}
+
+/* ── 2b. The SAME book re-read must produce NO carry-over at all. If it did, we would
+       be double-reporting the very accounts the union exists to deduplicate. ── */
+{
+  const book = (n) => Array.from({ length: 1000 }, (_, i) => row('A' + i, i < n));
+  const days = [4, 5, 8].map((d, i) => ({
+    date: `2026-07-0${d}`, display: `${d} July 2026`,
+    payload: pay(book([100, 250, 600][i]), `${d} July 2026`, CYC),
+  }));
+  const s = buildSummary({ campaign: pay(book(600), '8 July 2026', CYC), days, carry: null });
+  ok('re-reading the same book produces no carry-over', s.carry === null, `carry = ${JSON.stringify(s.carry)}`);
+  ok('re-reading the same book leaves outstanding unchanged',
+    s.campaign.agg.totals.sumOut === 1000 * 100000,
+    `got ₹${(s.campaign.agg.totals.sumOut / 1e7).toFixed(2)} Cr, expected ₹10.00 Cr`);
 }
 
 /* ── 3. Degenerate books. None of these should throw, and none should lie. ── */

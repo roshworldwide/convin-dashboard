@@ -31,7 +31,8 @@
     "db:schema": "psql \"$DATABASE_URL\" -f db/postgres/schema.sql",
     "dev:next": "next dev",
     "rebuild:local": "node rebuild_local.mjs",
-    "test:summary": "node evals/stress_summary.mjs"
+    "test:summary": "node evals/stress_summary.mjs",
+    "overlap": "node scripts/overlap.mjs"
   },
   "dependencies": {
     "next": "16.2.10",

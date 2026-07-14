@@ -126,27 +126,66 @@ export async function campaignSummary() {
     if (payload) days.push({ date: d.date, display: d.display, payload });
   }
 
-  /* The union. Iterating OLDEST → NEWEST and letting later writes overwrite means the
-     newest status for an account is the one that survives — which is the whole point:
-     an account resolved on the 8th must not still read Unresolved because the 4th said
-     so. */
-  const byAccount = new Map();
-  for (const d of dates) {
-    for (const r of await rowsOfDate(d.date)) {
-      const k = String(r.account_no ?? '').trim();
-      if (k) byAccount.set(k, r);
-    }
-  }
-
-  if (!byAccount.size) {
+  /* ── THE CURRENT BOOK ────────────────────────────────────────────────────────
+   *
+   * OUTSTANDING IS A STOCK, NOT A FLOW.
+   *
+   * It is the debt sitting on a book at a moment in time. You do not add a stock to
+   * itself across time, any more than you add January's bank balance to February's and
+   * call it your net worth. Every report date re-reads the book; the debt does not
+   * double because you looked at it twice.
+   *
+   * The union (below) is still exactly right for deduplicating the SAME accounts across
+   * dates — that is what stops a re-read from doubling the money. But if a genuinely NEW
+   * cycle arrives, with different account numbers, the union ADDS it, and the headline
+   * grows. Arithmetically that is defensible. As a number an exec reads off a slide it
+   * is wrong: "total outstanding" is understood to mean "what is on the book", and the
+   * book is the latest one.
+   *
+   * So the headline is the LATEST report date. Anything from an earlier cycle that is
+   * not in the current book is reported SEPARATELY, as carry-over, and never folded in.
+   * Nothing is hidden and nothing is summed that should not be.
+   * ─────────────────────────────────────────────────────────────────────────── */
+  const latestDate = dates[dates.length - 1];
+  const latestRows = await rowsOfDate(latestDate.date);
+  if (!latestRows.length) {
     return { version: 1, days: days.length, trend: [], campaign: null, findings: [], actions: [] };
   }
 
-  const agg = new Aggregator();
-  for (const r of byAccount.values()) agg.add(r);
-  const campaign = agg.payload(dates.length === 1 ? dates[0].display : `${dates[0].display} — ${dates[dates.length - 1].display}`);
+  const latestByAccount = new Map();
+  for (const r of latestRows) {
+    const k = String(r.account_no ?? '').trim();
+    if (k) latestByAccount.set(k, r);
+  }
 
-  return buildSummary({ campaign, days });
+  const agg = new Aggregator();
+  for (const r of latestByAccount.values()) agg.add(r);
+  const campaign = agg.payload(latestDate.display);
+
+  /* Carry-over: accounts we worked on an EARLIER date that are not in the current book.
+     If every date is a re-read of the same cycle this is zero and nothing is shown. If a
+     new cycle has started, it is the previous cycle — visible, counted, and kept out of
+     the headline. */
+  const carry = { accounts: 0, outstanding: 0, recovered: 0, dates: [] };
+  const seen = new Set(latestByAccount.keys());
+  for (let i = 0; i < dates.length - 1; i++) {
+    const d = dates[i];
+    let n = 0;
+    for (const r of await rowsOfDate(d.date)) {
+      const k = String(r.account_no ?? '').trim();
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      n++;
+      carry.accounts++;
+      carry.outstanding += Number(r.total_outstanding || 0);
+      if (String(r.status || '').trim().toLowerCase() === 'resolved') {
+        carry.recovered += Number(r.total_outstanding || 0);
+      }
+    }
+    if (n) carry.dates.push({ date: d.date, display: d.display, accounts: n });
+  }
+
+  return buildSummary({ campaign, days, carry: carry.accounts ? carry : null });
 }
 
 /** Canonical rows for one report date. Postgres or the local files — same shape out. */
