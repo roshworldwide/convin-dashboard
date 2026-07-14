@@ -1322,7 +1322,11 @@ export default function Report({ shareToken = null }) {
           /* Summary sits to the LEFT of Day Total, and is the only tab that is not
              about the selected date — it is the whole campaign, every date at once. */
           const tabs = [
-            { id: SUMMARY_ID, label: 'Summary', meta: nDates === 1 ? 'campaign' : `${nDates} days` },
+            /* "reports", NOT "days". The tabs beside this one are already called Day 1,
+               Day 2 — and those are UPLOADS within ONE date. This counts REPORT DATES.
+               Two different things wearing the same word is how someone ends up reading
+               a number as three days of calling when it is three re-reads of the book. */
+            { id: SUMMARY_ID, label: 'Summary', meta: nDates === 1 ? 'all reports' : `${nDates} reports` },
             { id: day.dayTotal, label: 'Day Total', meta: `${fmtInt(day.rowCount)} accounts` },
             ...day.uploads.map((u) => ({ id: u.id, label: dayLabel(u), meta: u.time || `${fmtInt(u.rowCount)} rows` }))];
           return (
