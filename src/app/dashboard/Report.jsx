@@ -562,11 +562,11 @@ export default function Report({ shareToken = null }) {
      payloads — those simply never looked, which is what `npm run rebuild` is for. */
   const OW = A.outcomeWindow;
   const kpis = [
-    { label: 'Recovered', value: fmtCr(t.recovered), sub: `${pct(t.recoveryRatePct)} of outstanding`, color: C.green },
+    { label: 'Recovered Amount', value: fmtCr(t.recovered), sub: `${pct(t.recoveryRatePct)} of outstanding`, color: C.green },
     { label: 'Resolution Rate', value: pct(t.resolutionRatePct), sub: `${fmtInt(t.resolved)} of ${fmtInt(t.accounts)} accounts`, color: C.blue },
-    { label: 'Outstanding Managed', value: fmtCr(t.sumOut), sub: `${fmtInt(t.accounts)} accounts`, color: C.indigo },
+    { label: 'Outstanding Amount', value: fmtCr(t.sumOut), sub: `${fmtInt(t.accounts)} accounts`, color: C.indigo },
     { label: 'AI Calls Connected', value: fmtInt(A.ai.connected), sub: `of ${fmtInt(A.ai.attempts)} attempts`, color: C.purple },
-    { label: 'Avg Recovery', value: fmtINR(t.avgRecoveryPerResolved), sub: 'per resolved account', color: C.pink },
+    { label: 'Avg Recovery Amount', value: fmtINR(t.avgRecoveryPerResolved), sub: 'per resolved account', color: C.pink },
   ];
 
   const dispMax = Math.max(...A.disposition.map((d) => d.recovered), 1);
@@ -1116,31 +1116,59 @@ export default function Report({ shareToken = null }) {
           )}
         </div>
 
-        {/* ===== Stale-report notice =====
+        {/* ===== Schema-mismatch notice =====
             The dashboard renders a payload computed at UPLOAD time and cached — it does
-            not recompute on load. So when the aggregator gains a field, every report
-            already on disk lacks it, and every card guarded on that field silently
-            disappears. No error. No warning. The symptom is simply "I can't see that
-            card", and if it happens the morning of a client meeting you will not know
-            why. Two sections vanished exactly this way. So a stale report now says so,
-            loudly, and tells you the one command that fixes it. */}
-        {data.version !== PAYLOAD_VERSION && (
-          <div style={{
-            ...GLASS, borderRadius: 18, padding: '16px 20px', marginBottom: 16,
-            border: '1px solid rgba(255,149,0,.42)', background: 'rgba(255,149,0,.09)',
-          }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#b7791f', marginBottom: 4 }}>
-              This report was computed by an older version of the analysis engine
+            not recompute on load. So the stored data and the running code can drift
+            apart, and they can drift in EITHER direction:
+
+              data OLDER than app  — the aggregator gained a field the stored report
+                                     lacks, so every card guarded on it silently
+                                     disappears. No error, no clue. Two sections vanished
+                                     exactly this way. Fix: `npm run rebuild`.
+
+              data NEWER than app  — the code shipped, the payload was rebuilt, but the
+                                     browser is still running an old bundle (a Vercel
+                                     deploy that hasn't landed, or a cached chunk). Fix:
+                                     redeploy and hard-refresh.
+
+            This banner only ever handled the first case, and cheerfully told you to run
+            `npm run rebuild` in the second — where rebuilding is useless and the real
+            problem is a stale deploy. Advice that confidently points the wrong way is
+            worse than no advice, because you will follow it. */}
+        {data.version !== PAYLOAD_VERSION && (() => {
+          const stored = data.version ?? 1;
+          const appBehind = stored > PAYLOAD_VERSION;
+          return (
+            <div style={{
+              ...GLASS, borderRadius: 18, padding: '16px 20px', marginBottom: 16,
+              border: '1px solid rgba(255,149,0,.42)', background: 'rgba(255,149,0,.09)',
+            }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#b7791f', marginBottom: 4 }}>
+                {appBehind
+                  ? 'You are running an older version of the app than the data'
+                  : 'This report was computed by an older version of the analysis engine'}
+              </div>
+              <div style={{ fontSize: 13, color: ink(.72), lineHeight: 1.6 }}>
+                The stored report is schema <b>v{stored}</b>; the app you are running is <b>v{PAYLOAD_VERSION}</b>.{' '}
+                {appBehind ? (
+                  <>
+                    The data has been rebuilt but this browser is still running old code — a deploy that
+                    has not landed yet, or a cached bundle. Sections and wording added since v{PAYLOAD_VERSION} will{' '}
+                    <b>not appear</b>, however many times you rebuild. Check the deploy finished, then{' '}
+                    <b>hard-refresh</b> (<code style={{ background: ink(.08), padding: '2px 7px', borderRadius: 6, fontSize: 12.5 }}>Cmd/Ctrl + Shift + R</code>).
+                  </>
+                ) : (
+                  <>
+                    Sections added since then are <b>not on this page</b> — they are missing, not empty. Regenerate
+                    every stored report from its saved rows with{' '}
+                    <code style={{ background: ink(.08), padding: '2px 7px', borderRadius: 6, fontSize: 12.5 }}>npm run rebuild</code>
+                    {' '}and reload. Nothing is re-uploaded and no numbers change.
+                  </>
+                )}
+              </div>
             </div>
-            <div style={{ fontSize: 13, color: ink(.72), lineHeight: 1.6 }}>
-              It was built with schema v{data.version ?? '1'}; the app is now on v{PAYLOAD_VERSION}. Sections added since
-              then are <b>not on this page</b> — they are missing, not empty. Regenerate every stored report from its
-              saved rows with{' '}
-              <code style={{ background: ink(.08), padding: '2px 7px', borderRadius: 6, fontSize: 12.5 }}>npm run rebuild</code>
-              {' '}and reload. Nothing is re-uploaded and no numbers change.
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ===== OUTCOME WINDOW =====
             The status file was pulled BEFORE the calls finished.
