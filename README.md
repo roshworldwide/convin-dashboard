@@ -52,19 +52,18 @@ machinery that stops a plausible-looking number from reaching a client:
   dialled comes back "Unresolved" — not because the customer refused, but because nobody had
   looked yet. Nothing about it looks broken: every total is correct, every chart renders, and the
   dial-efficiency chart draws a clean line to **0% resolved** on the accounts you called hardest.
-  It happened on the real book — 740 accounts, 12,130 dials, 30% of the campaign. The app
-  detects it and refuses to draw the behavioural charts over accounts whose outcome nobody
-  has recorded — each says, in a footnote, what it excluded and why. *(The page-level red
-  warning was removed at the client's request on 14 July 2026; the detection remains, but
-  nothing now announces a bad pairing on the page. The fix was never the banner — upload a
-  status file pulled AFTER the last call and the condition disappears.)*
+  It happened on the real book — 740 accounts, 12,130 dials, 30% of the campaign. The app now
+  detects it, says so in red, and refuses to draw the behavioural charts over accounts whose
+  outcome nobody has recorded.
 - A partial join is refused outright. Half a book counted at ₹0 is worse than no report.
 - Day Total is a **union of accounts**, not a sum of rows — upload the same book twice and
-  the money does not double.
+  the money does not double. The **Campaign Summary** applies the same rule across report
+  dates: every date is a re-pull of the same book against a later status file, so summing
+  five days would report five times the money. Union, never sum.
 - A stale cached report announces itself instead of silently dropping the sections it
   doesn't have.
 
-**483 invariant checks** guard this: `npm run test:all`.
+**502 invariant checks** guard this: `npm run test:all`.
 
 ## RoshRegression
 
@@ -106,7 +105,7 @@ on Vercel at all, which refuses any request body over 4.5 MB.
 
 ```bash
 npm run dev          # app + tunnel, one terminal
-npm run test:all     # 483 invariant checks
+npm run test:all     # 502 invariant checks
 npm run check:pii    # refuses to let customer data reach a commit
 npm run push         # parse 3 files locally → straight into Postgres
 npm run rebuild      # regenerate stored reports after an aggregator change (Postgres or local)
