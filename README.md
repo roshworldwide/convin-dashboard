@@ -57,11 +57,13 @@ machinery that stops a plausible-looking number from reaching a client:
   outcome nobody has recorded.
 - A partial join is refused outright. Half a book counted at ₹0 is worse than no report.
 - Day Total is a **union of accounts**, not a sum of rows — upload the same book twice and
-  the money does not double.
+  the money does not double. The **Campaign Summary** applies the same rule across report
+  dates: every date is a re-pull of the same book against a later status file, so summing
+  five days would report five times the money. Union, never sum.
 - A stale cached report announces itself instead of silently dropping the sections it
   doesn't have.
 
-**462 invariant checks** guard this: `npm run test:all`.
+**502 invariant checks** guard this: `npm run test:all`.
 
 ## RoshRegression
 
@@ -103,7 +105,7 @@ on Vercel at all, which refuses any request body over 4.5 MB.
 
 ```bash
 npm run dev          # app + tunnel, one terminal
-npm run test:all     # 462 invariant checks
+npm run test:all     # 502 invariant checks
 npm run check:pii    # refuses to let customer data reach a commit
 npm run push         # parse 3 files locally → straight into Postgres
 npm run rebuild      # regenerate stored reports after an aggregator change (Postgres or local)

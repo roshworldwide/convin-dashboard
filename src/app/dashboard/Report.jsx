@@ -65,6 +65,11 @@ const pct = (n, d = 1) => (n || 0).toFixed(d) + '%';
     "Upload 3" while the upload screen says "Day 3" is the kind of small inconsistency
     that makes someone distrust the big numbers. So we rename on read as well. */
 const dayLabel = (u) => String(u?.label || '').replace(/^Upload\b/i, 'Day') || 'Day';
+
+/* The Summary tab is not a batch. It spans every report date, so it has no batch id —
+   this sentinel stands in for one, and can never collide with a real id (those are all
+   "YYYY-MM-DD__…"). */
+const SUMMARY_ID = '__summary';
 const fmtDay = (iso) => {
   const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return iso || '—';
@@ -242,6 +247,193 @@ function ManageLinks({ links, busy, revoking, copiedToken, onRevoke, onCopy, onR
   );
 }
 
+/* ═══════════════════════════ CAMPAIGN SUMMARY ═══════════════════════════
+ *
+ * Every report date, in one view: where the campaign stands, what is working, and what
+ * to work next.
+ *
+ * THE ONE THING TO KNOW BEFORE CHANGING ANYTHING HERE.
+ * The headline is a UNION of accounts across every date — not a sum of the days. Each
+ * report date is a re-pull of the SAME book (one CYC file, a later status file), so
+ * adding "recovered" across five dates reports five times the money. It is
+ * arithmetically defensible, visually plausible, and completely false, and it is the
+ * number an exec repeats out loud. The union happens in backend.mjs; everything here
+ * just renders it. Do not "helpfully" total the trend column.
+ * ══════════════════════════════════════════════════════════════════════════ */
+function SummaryView({ s }) {
+  if (!s) {
+    return (
+      <div style={{ padding: '80px 0', textAlign: 'center', color: ink(.45), fontSize: 14 }}>
+        Building the campaign summary…
+      </div>
+    );
+  }
+  if (s.error || !s.campaign) {
+    return (
+      <div style={{ padding: '60px 0', textAlign: 'center', color: ink(.5), fontSize: 14 }}>
+        {s.error || 'No reports have been uploaded yet, so there is nothing to summarise.'}
+      </div>
+    );
+  }
+
+  const A = s.campaign.agg;
+  const t = A.totals;
+  const m = s.movement;
+  const multi = s.trend.length > 1;
+
+  const head = [
+    { l: 'Recovered Amount', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of outstanding`, c: C.green },
+    { l: 'Accounts Resolved', v: fmtInt(t.resolved), s: `${pct(t.resolutionRatePct, 1)} of ${fmtInt(t.accounts)}`, c: C.blue },
+    { l: 'Outstanding Amount', v: fmtCr(t.sumOut), s: `${fmtInt(t.accounts)} accounts`, c: C.indigo },
+    { l: 'Still Open', v: fmtCr(t.outstandingPending), s: `${fmtInt(t.unresolved)} accounts`, c: C.orange },
+  ];
+
+  return (
+    <div style={{ paddingTop: 8 }}>
+      {/* ── Hero ── */}
+      <div style={{ padding: '44px 0 30px' }}>
+        <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.12em', color: C.blue, textTransform: 'uppercase', marginBottom: 14 }}>
+          Campaign Summary
+        </div>
+        <h1 className="print-solid-text" style={{ fontSize: 48, lineHeight: 1.06, fontWeight: 700, letterSpacing: '-.03em', margin: '0 0 16px', maxWidth: 900, background: 'linear-gradient(120deg,#34C759 0%,#0071E3 55%,#5856D6 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
+          {fmtCr(t.recovered)} recovered across {s.trend.length === 1 ? 'the campaign' : `${s.trend.length} reports`}.
+        </h1>
+        <p style={{ fontSize: 17, lineHeight: 1.55, color: ink(.6), maxWidth: 760, margin: 0 }}>
+          {fmtInt(t.accounts)} accounts holding {fmtCr(t.sumOut)} — {fmtInt(t.resolved)} resolved ({pct(t.resolutionRatePct)}),
+          {' '}{fmtCr(t.outstandingPending)} still open across {fmtInt(t.unresolved)} accounts.
+          {multi && (
+            <>
+              {' '}Figures are the <b>union of every report date</b>, not a sum — each date re-reads the same book,
+              so the money is counted once.
+            </>
+          )}
+        </p>
+      </div>
+
+      {/* ── Headline ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 16 }}>
+        {head.map((k, i) => (
+          <Card key={i} span={12} style={{ padding: '18px 20px' }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: ink(.5), marginBottom: 8 }}>{k.l}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-.02em', color: k.c, fontVariantNumeric: 'tabular-nums' }}>{k.v}</div>
+            <div style={{ fontSize: 12, color: ink(.45), marginTop: 4 }}>{k.s}</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* ── Movement. Only shown when there is more than one read of the SAME book —
+             otherwise "recovery went up ₹20 Cr" would be measuring a different book. ── */}
+      {m && (
+        <Card span={12} style={{ marginBottom: 16 }}>
+          <Title t="Movement" s={`How the book changed between ${m.from} and ${m.to}`} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 20, marginTop: 4 }}>
+            {[
+              { l: 'Recovered', v: `${m.recovered >= 0 ? '+' : '−'}${fmtCr(Math.abs(m.recovered))}`, c: m.recovered >= 0 ? C.green : '#C9302C' },
+              { l: 'Accounts resolved', v: `${m.resolved >= 0 ? '+' : '−'}${fmtInt(Math.abs(m.resolved))}`, c: m.resolved >= 0 ? C.green : '#C9302C' },
+              { l: 'Resolution rate', v: `${m.resolutionPts >= 0 ? '+' : '−'}${Math.abs(m.resolutionPts).toFixed(1)} pts`, c: m.resolutionPts >= 0 ? C.green : '#C9302C' },
+            ].map((x, i) => (
+              <div key={i}>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: ink(.45), marginBottom: 6 }}>{x.l}</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: x.c, fontVariantNumeric: 'tabular-nums' }}>{x.v}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ── The trend. One row per report date. ── */}
+      {multi && (
+        <Card span={12} className="print-breakable" style={{ marginBottom: 16 }}>
+          <Title t="Every report, in order" s="Each date is a fresh status pull against the same book — so this is progress, not new money" />
+          <div className="table-scroll" style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr>
+                  {['Report date', 'Accounts', 'Outstanding', 'Recovered', 'Resolved', 'Resolution', 'Change'].map((h, i) => (
+                    <th key={h} style={{ textAlign: i ? 'right' : 'left', padding: '9px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.45), borderBottom: `1px solid ${ink(.1)}`, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {s.trend.map((d, i) => (
+                  <tr key={d.date}>
+                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, fontWeight: 600 }}>{d.display}</td>
+                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.accounts)}</td>
+                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtCr(d.outstanding)}</td>
+                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: C.green }}>{fmtCr(d.recovered)}</td>
+                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.resolved)}</td>
+                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{pct(d.resolutionPct, 1)}</td>
+                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: d.recoveredDelta > 0 ? C.green : ink(.35) }}>
+                      {i === 0 ? '—' : d.sameBook === false ? 'new book' : d.recoveredDelta ? `+${fmtCr(d.recoveredDelta)}` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11.5, color: ink(.42), marginTop: 10, lineHeight: 1.6 }}>
+            <b>These rows do not add up, and must not be added up.</b> Every date re-reads the same book against a later
+            status file, so a customer who paid on the 4th is still resolved on the 8th. The headline above is the{' '}
+            <b>union</b> of all dates — each account counted once, at its most recent outcome.
+          </div>
+        </Card>
+      )}
+
+      {/* ── What's working, what isn't ── */}
+      {s.findings?.length > 0 && (
+        <Card span={12} className="print-breakable" style={{ marginBottom: 16 }}>
+          <Title t="What's working, and what isn't" s="Every line below is computed from the book — none of it is asserted" />
+          <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
+            {s.findings.map((f, i) => (
+              <div key={i} style={{
+                display: 'flex', gap: 14, alignItems: 'flex-start', padding: '13px 16px', borderRadius: 12,
+                background: f.kind === 'good' ? 'rgba(52,199,89,.07)' : 'rgba(255,149,0,.07)',
+                border: `1px solid ${f.kind === 'good' ? 'rgba(52,199,89,.22)' : 'rgba(255,149,0,.22)'}`,
+              }}>
+                <div style={{ flex: 'none', width: 74, fontSize: 16, fontWeight: 700, color: f.kind === 'good' ? '#248A3D' : '#B7791F', fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>
+                  {f.value}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 3 }}>{f.label}</div>
+                  <div style={{ fontSize: 12.5, color: ink(.62), lineHeight: 1.6 }}>{f.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* ── The work queue ── */}
+      <Card span={12} className="print-breakable" style={{ marginBottom: 16 }}>
+        <Title t="What to work next" s="The open book, ranked by what it is worth — a queue, not an observation" />
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, margin: '2px 0 18px' }}>
+          <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.02em', color: C.orange, fontVariantNumeric: 'tabular-nums' }}>
+            {fmtCr(s.openAmount)}
+          </div>
+          <div style={{ fontSize: 13.5, color: ink(.55) }}>still outstanding across {fmtInt(s.openAccounts)} open accounts</div>
+        </div>
+        {s.actions.map((a, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '13px 0', borderTop: `1px solid ${ink(.08)}` }}>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 600 }}>{a.label}</div>
+              <div style={{ fontSize: 12, color: ink(.45), marginTop: 2 }}>{a.note} · {fmtInt(a.count)} accounts</div>
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.indigo, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtCr(a.amount)}</div>
+          </div>
+        ))}
+        {!s.actions.length && (
+          <div style={{ fontSize: 13, color: ink(.45), paddingTop: 8 }}>Nothing left in the open book to prioritise.</div>
+        )}
+      </Card>
+
+      <div style={{ textAlign: 'center', fontSize: 12, color: ink(.4), marginTop: 40, lineHeight: 1.7 }}>
+        Convin × RBL Bank · Campaign Summary · {s.trend.length} report{s.trend.length === 1 ? '' : 's'} ·
+        {' '}Accounts unioned across every date — counted once, at their most recent outcome.
+      </div>
+    </div>
+  );
+}
+
 /* ============================ report ============================
    One component, two doors.
 
@@ -266,6 +458,7 @@ export default function Report({ shareToken = null }) {
   const [dateIdx, setDateIdx] = useState(0);
   const [batchId, setBatchId] = useState(null);
   const [switching, setSwitching] = useState(false);
+  const [summary, setSummary] = useState(null);
   const [theme, setTheme] = useState('light');
   const [name, setName] = useState('');
 
@@ -345,13 +538,27 @@ export default function Report({ shareToken = null }) {
     try { localStorage.setItem('cvtheme', theme); } catch {}
   }, [theme]);
 
+  /* The campaign summary is a TAB, but it is not a batch — it spans every date, so it
+     has no batch id and cannot come from /api/batch. It gets its own fetch and its own
+     sentinel id, and `data` (the currently-selected report) is deliberately left alone
+     underneath it, so switching back to a day costs nothing. */
   const selectBatch = async (id) => {
     if (id === batchId) return;
     setSwitching(true);
     try {
+      if (id === SUMMARY_ID) {
+        setBatchId(id);
+        if (!summary) {
+          const s = await fetch('/api/summary').then((r) => r.json());
+          setSummary(s.error ? { error: s.error } : s);
+        }
+        return;
+      }
       const p = await fetch(`/api/batch?id=${encodeURIComponent(id)}`).then((r) => r.json());
       setData(p); setBatchId(id); setPage(0);
-    } catch {} finally { setSwitching(false); }
+    } catch (e) {
+      if (id === SUMMARY_ID) setSummary({ error: 'Could not build the summary.' });
+    } finally { setSwitching(false); }
   };
   const gotoDate = (idx) => {
     if (!manifest || idx < 0 || idx >= manifest.dates.length) return;
@@ -447,6 +654,14 @@ export default function Report({ shareToken = null }) {
 
   const makeShare = async () => {
     if (!batchId || !manifest) return;
+    /* A share link is scoped to ONE batch — that is the whole security model: the holder
+       cannot navigate to another date. The campaign summary is every date at once, so it
+       is not shareable by construction. /api/summary refuses a share token for the same
+       reason; this stops the link being created in the first place. */
+    if (batchId === SUMMARY_ID) {
+      setShareErrMsg('The campaign summary spans every report date, so it cannot be shared as a link. Pick a specific report first — a share link is deliberately scoped to one.');
+      return;
+    }
     setShareBusy(true); setShareErrMsg('');
     try {
       const res = await fetch('/api/share', {
@@ -500,6 +715,9 @@ export default function Report({ shareToken = null }) {
        its effect from firing. */
     if (shareToken) return;
     if (!authed || !batchId) return;
+    /* The Account Explorer pages one BATCH. "__summary" is not a batch — it spans every
+       date — so asking /api/rows for it would 500 on every keystroke in the filter box. */
+    if (batchId === SUMMARY_ID) return;
     let active = true;
     const p = new URLSearchParams({ id: batchId, page: String(page), size: String(PAGE_SIZE), q, status: fStatus, region: fRegion, band: fBand, disp: fDisp, sort: sortKey, dir: sortDir });
     const run = () => {
@@ -561,6 +779,7 @@ export default function Report({ shareToken = null }) {
   /* The blind window, if the status file predated the calls. Absent on v5 and older
      payloads — those simply never looked, which is what `npm run rebuild` is for. */
   const OW = A.outcomeWindow;
+  const isSummary = batchId === SUMMARY_ID;
   const kpis = [
     { label: 'Recovered Amount', value: fmtCr(t.recovered), sub: `${pct(t.recoveryRatePct)} of outstanding`, color: C.green },
     { label: 'Resolution Rate', value: pct(t.resolutionRatePct), sub: `${fmtInt(t.resolved)} of ${fmtInt(t.accounts)} accounts`, color: C.blue },
@@ -993,7 +1212,12 @@ export default function Report({ shareToken = null }) {
             holder a date picker that cannot work is worse than offering nothing. */}
         {!shareToken && manifest && manifest.dates && manifest.dates.length > 0 && (() => {
           const day = manifest.dates[dateIdx];
-          const tabs = [{ id: day.dayTotal, label: 'Day Total', meta: `${fmtInt(day.rowCount)} accounts` },
+          const nDates = manifest.dates.length;
+          /* Summary sits to the LEFT of Day Total, and is the only tab that is not
+             about the selected date — it is the whole campaign, every date at once. */
+          const tabs = [
+            { id: SUMMARY_ID, label: 'Summary', meta: nDates === 1 ? 'campaign' : `${nDates} days` },
+            { id: day.dayTotal, label: 'Day Total', meta: `${fmtInt(day.rowCount)} accounts` },
             ...day.uploads.map((u) => ({ id: u.id, label: dayLabel(u), meta: u.time || `${fmtInt(u.rowCount)} rows` }))];
           return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', padding: '28px 0 2px', animation: 'fadeUp .6s cubic-bezier(.32,.72,0,1) both' }}>
@@ -1016,6 +1240,13 @@ export default function Report({ shareToken = null }) {
             </div>
           );
         })()}
+
+        {/* ═══════════════════════ CAMPAIGN SUMMARY ═══════════════════════
+            The Summary tab replaces the whole report body. It is not a view of the
+            selected date — it is every date at once, unioned by account, and it has no
+            batch behind it. Everything below stays mounted and untouched, so switching
+            back to a day is instant. */}
+        {isSummary ? <SummaryView s={summary} /> : (<>
 
         {/* ═══════════════════════ PRINT COVER ═══════════════════════
             Invisible on screen; the first page of the PDF. A report a bank will actually
@@ -2048,6 +2279,7 @@ export default function Report({ shareToken = null }) {
             </div>
           )}
         </div>
+        </>)}
       </div>
     </div>
   );

@@ -85,3 +85,87 @@ export async function rows(params) {
 function pack(rowsArr, total, page, size, filters) {
   return { header: ROWS_HEADER, rows: rowsArr, total, page, totalPages: Math.max(1, Math.ceil(total / size)), filters };
 }
+
+/* ── THE CAMPAIGN SUMMARY ───────────────────────────────────────────────────────
+ *
+ * Every report date is a re-pull of the SAME book: one CYC file, joined against a
+ * status file pulled on a later and later day. The accounts do not change. The
+ * outcomes do.
+ *
+ * So the campaign total is NOT the sum of the days. Add "recovered" across five report
+ * dates and you report five times the money — arithmetically defensible, visually
+ * plausible, and utterly false. It is the number an exec repeats out loud, which makes
+ * it the worst possible place for that bug. It already shipped once at the day level:
+ * three uploads of a ₹13 Cr book produced a ₹65 Cr "Day Total".
+ *
+ * Same rule as Day Total, one level up:
+ *
+ *     the campaign is the UNION of accounts across every date, NEWEST DATE WINS.
+ *
+ * Union, not sum. Re-pull the same book ten times and the money does not move. Send a
+ * genuinely new cycle and its accounts are added, because they are new accounts. Both
+ * are correct and neither needs a special case.
+ *
+ * Computed on request rather than stored: it spans every date, so any upload
+ * invalidates it, and a cached campaign roll-up that silently went stale would be
+ * exactly the class of bug this app exists to refuse.
+ * ─────────────────────────────────────────────────────────────────────────────── */
+export async function campaignSummary() {
+  const { Aggregator } = await import('./aggregate.mjs');
+  const { buildSummary } = await import('./summary.mjs');
+
+  const man = await manifest();
+  const dates = [...(man.dates || [])].sort((a, b) => (a.date < b.date ? -1 : 1)); // OLDEST first
+
+  if (!dates.length) return { version: 1, days: 0, trend: [], campaign: null, findings: [], actions: [] };
+
+  // Each day's stored Day Total — cheap, already computed, drives the trend line.
+  const days = [];
+  for (const d of dates) {
+    const payload = await batchPayload(d.dayTotal);
+    if (payload) days.push({ date: d.date, display: d.display, payload });
+  }
+
+  /* The union. Iterating OLDEST → NEWEST and letting later writes overwrite means the
+     newest status for an account is the one that survives — which is the whole point:
+     an account resolved on the 8th must not still read Unresolved because the 4th said
+     so. */
+  const byAccount = new Map();
+  for (const d of dates) {
+    for (const r of await rowsOfDate(d.date)) {
+      const k = String(r.account_no ?? '').trim();
+      if (k) byAccount.set(k, r);
+    }
+  }
+
+  if (!byAccount.size) {
+    return { version: 1, days: days.length, trend: [], campaign: null, findings: [], actions: [] };
+  }
+
+  const agg = new Aggregator();
+  for (const r of byAccount.values()) agg.add(r);
+  const campaign = agg.payload(dates.length === 1 ? dates[0].display : `${dates[0].display} — ${dates[dates.length - 1].display}`);
+
+  return buildSummary({ campaign, days });
+}
+
+/** Canonical rows for one report date. Postgres or the local files — same shape out. */
+async function rowsOfDate(iso) {
+  if (hasDb()) {
+    const { forEachRowOfDate } = await import('./db.mjs');
+    const out = [];
+    await forEachRowOfDate(iso, (r) => out.push(r));
+    return out;
+  }
+  const { readdir } = await import('node:fs/promises');
+  const dir = path.join(DATA(), 'batches');
+  let files = [];
+  try {
+    files = (await readdir(dir)).filter((f) => f.startsWith(`${iso}__u`) && f.endsWith('.canon.json')).sort();
+  } catch { return []; }
+  const out = [];
+  for (const f of files) {
+    try { out.push(...await readJson(path.join(dir, f))); } catch { /* a half-written upload; skip it */ }
+  }
+  return out;
+}
