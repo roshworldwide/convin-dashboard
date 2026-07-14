@@ -12,6 +12,37 @@ import {
 
 const DUR_ORDER = ['Not connected', '<30s', '30–60s', '1–2 min', '2–5 min', '>5 min'];
 const ATT_ORDER = ['1–3', '4–6', '7–9', '10–12', '13+'];
+
+/* An entire day's worth of calls in which NOT ONE account resolved — while the days
+   before it resolved normally — is not a result. It is a day whose outcome had not
+   been written yet when the status file was pulled. BLIND_MIN is the smallest cohort
+   we will call blind on that basis; below it, a genuine run of bad luck is plausible
+   and we say nothing. Above it, zero is not luck. (On the 3 July book: 740 accounts,
+   0 resolved, against 18–40% on every other day.) */
+const BLIND_MIN = 25;
+/* Below this, a resolution percentage on a call-behaviour chart is noise. Charted
+   as a raw count instead of a rate — the same rule the L2 table already uses. */
+const CELL_MIN = 30;
+const dayOf = (r) => String(r.last_call_at || '').slice(0, 10);
+/* Subtract the blind days from a bucket's counters. */
+const netOf = (tot, byDate, blind, fields) => {
+  const o = {};
+  for (const f of fields) o[f] = tot[f] || 0;
+  for (const d of blind) {
+    const c = byDate?.get(d);
+    if (!c) continue;
+    for (const f of fields) o[f] -= c[f] || 0;
+  }
+  return o;
+};
+/* A by-date sub-counter, lazily created. */
+const bump = (parent, date, fields) => {
+  if (!date) return null;
+  if (!parent.byDate) parent.byDate = new Map();
+  let c = parent.byDate.get(date);
+  if (!c) { c = {}; for (const f of fields) c[f] = 0; parent.byDate.set(date, c); }
+  return c;
+};
 const durBucket = (s) => (s <= 0 ? 'Not connected' : s < 30 ? '<30s' : s < 60 ? '30–60s' : s < 120 ? '1–2 min' : s < 300 ? '2–5 min' : '>5 min');
 const attBand = (a) => (a <= 3 ? '1–3' : a <= 6 ? '4–6' : a <= 9 ? '7–9' : a <= 12 ? '10–12' : '13+');
 const U = (x) => String(x ?? '').trim().toUpperCase();
@@ -57,6 +88,12 @@ export class Aggregator {
     this.dirtyAttempts = 0;   // rows claiming connected calls with zero attempts
     this.paidYes = 0; this.paidYesRes = 0; this.saidNoRes = 0; this.promisedOpen = 0;
     this.dial = new Map();
+    /* Accounts grouped by the DATE OF THEIR LAST CALL. This is the whole apparatus for
+       catching a status file that was pulled before the calls finished — see
+       _outcomeWindow() below. Bounded by the number of days in a campaign, so it costs
+       nothing. Every call-behaviour chart also keeps its own by-date breakdown, so the
+       blind days can be subtracted at payload time without a second pass over rows. */
+    this.lastCall = new Map();
     // model training set (features + outcome) and the open book we'll score
     this.X = []; this.Y = [];
     this.openX = []; this.openAmt = [];
@@ -136,9 +173,20 @@ export class Aggregator {
     this._geo(this.region, r.region, r, o, resolved);
     this._geo(this.state, r.primary_state, r, o, resolved);
 
+    /* The account's cohort: the day the AI last spoke to it. */
+    const day = dayOf(r);
+    if (day) {
+      let lc = this.lastCall.get(day);
+      if (!lc) { lc = { n: 0, res: 0, attempts: 0, connected: 0, outstanding: 0 }; this.lastCall.set(day, lc); }
+      lc.n++; lc.attempts += r.ai_attempts; lc.connected += r.ai_connected_calls; lc.outstanding += o;
+      if (resolved) lc.res++;
+    }
+
     const db = durBucket(r.ai_connected_seconds);
     let du = this.dur.get(db); if (!du) { du = { n: 0, res: 0, ptp: 0, paid: 0, ref: 0 }; this.dur.set(db, du); }
     du.n++; if (resolved) du.res++; if (U(r.promise_flag) === 'YES') du.ptp++; if (U(r.paid_flag) === 'YES') du.paid++; if (r.refusal_flag === 'YES') du.ref++;
+    const duD = bump(du, day, ['n', 'res']);
+    if (duD) { duD.n++; if (resolved) duD.res++; }
 
     /* Duration × Disposition L2. L1 says "Paid"; L2 says WHY, and the two tell very
        different stories about talk time. "Promise to Pay Later" holds the longest
@@ -149,9 +197,13 @@ export class Aggregator {
     if (!dl) { dl = { n: 0, res: 0, secs: 0, recovered: 0, buckets: new Map() }; this.durL2.set(l2, dl); }
     dl.n++; dl.secs += r.ai_connected_seconds;
     if (resolved) { dl.res++; dl.recovered += o; }
+    const dlD = bump(dl, day, ['n', 'res', 'secs', 'recovered']);
+    if (dlD) { dlD.n++; dlD.secs += r.ai_connected_seconds; if (resolved) { dlD.res++; dlD.recovered += o; } }
     let bb2 = dl.buckets.get(db);
     if (!bb2) { bb2 = { n: 0, res: 0 }; dl.buckets.set(db, bb2); }
     bb2.n++; if (resolved) bb2.res++;
+    const bb2D = bump(bb2, day, ['n', 'res']);
+    if (bb2D) { bb2D.n++; if (resolved) bb2D.res++; }
 
     if (resolved && r.payment_mode && r.payment_mode !== 'NA') {
       let p = this.pm.get(r.payment_mode); if (!p) { p = { payments: 0, amount: 0 }; this.pm.set(r.payment_mode, p); }
@@ -186,6 +238,8 @@ export class Aggregator {
     const ab = attBand(r.ai_attempts);
     let da = this.dial.get(ab); if (!da) { da = { n: 0, connect: 0, resolved: 0 }; this.dial.set(ab, da); }
     da.n++; if (r.ai_connected_calls > 0) da.connect++; if (resolved) da.resolved++;
+    const daD = bump(da, day, ['n', 'connect', 'resolved']);
+    if (daD) { daD.n++; if (r.ai_connected_calls > 0) daD.connect++; if (resolved) daD.resolved++; }
 
     if (!resolved) {
       this.openOut += o;
@@ -195,8 +249,80 @@ export class Aggregator {
     } else if (U(r.paid_flag) === 'NO') this.saidNoRes++;
   }
 
+  /* ── OUTCOME WINDOW ────────────────────────────────────────────────────────────
+   *
+   * Did the status file get pulled BEFORE the calls finished?
+   *
+   * The outcome is a snapshot. The calls are a process that runs for days. Pair a
+   * Monday snapshot with a campaign that ran to Thursday and every account still
+   * being dialled on Tuesday, Wednesday and Thursday comes back "Unresolved" — not
+   * because the customer refused, but because nobody had looked yet. The account is
+   * not a failure. It is unmeasured.
+   *
+   * This is invisible in every headline. It surfaces only where a chart plots
+   * resolution against something that correlates with WHEN the account was called —
+   * and dial attempts correlate with it almost perfectly, because the dialler stops
+   * calling an account once it resolves. So the accounts dialled most are exactly the
+   * accounts whose outcome is missing, and the chart draws a clean line to zero.
+   *
+   * On the 3 July book: 740 accounts, 12,130 dials (30% of the campaign), 1,449
+   * connected calls — reading exactly 0.0% resolved, against 18–40% on every other
+   * day. The report showed "13+ attempts → 0% resolved" to a bank. That number was
+   * arithmetically correct and completely false.
+   *
+   * The test is simple and needs no knowledge of when the file was pulled: walk back
+   * from the last day of calling and mark the trailing run of days on which NOT ONE
+   * account resolved. Zero out of 740 is not a bad day. It is a day nobody scored.  */
+  _outcomeWindow() {
+    const days = [...this.lastCall.keys()].sort();
+    if (!days.length) return { hasCallDates: false, blind: [], blindAccounts: 0 };
+
+    const cohorts = days.map((d) => {
+      const c = this.lastCall.get(d);
+      return { date: d, ...c, resolutionPct: c.n ? c.res / c.n * 100 : 0 };
+    });
+
+    const blind = [];
+    for (let i = cohorts.length - 1; i >= 0; i--) {
+      const c = cohorts[i];
+      if (c.res === 0 && c.n >= BLIND_MIN) blind.unshift(c.date); else break;
+    }
+
+    /* If EVERY day is blind, nothing resolved anywhere and the status file is simply
+       wrong or empty. That is a different failure with a different fix, and quietly
+       excluding the entire book to "handle" it would be the worst thing we could do.
+       Report it as no blind window and let the zero resolution rate speak. */
+    if (blind.length === cohorts.length) {
+      return { hasCallDates: true, cohorts, blind: [], blindAccounts: 0, allZero: true };
+    }
+
+    const b = new Set(blind);
+    const hit = cohorts.filter((c) => b.has(c.date));
+    const sum = (f) => hit.reduce((a, c) => a + c[f], 0);
+    return {
+      hasCallDates: true,
+      cohorts,
+      blind,
+      firstBlindDate: blind[0] || null,
+      lastCallDate: days[days.length - 1],
+      // The last day on which the outcome file could still see a resolution — i.e.
+      // the newest day that is NOT blind. This is our best evidence of when the
+      // status file was actually pulled, and it is what the user must beat.
+      outcomeSeenTo: blind.length ? cohorts[cohorts.length - blind.length - 1].date : days[days.length - 1],
+      blindAccounts: sum('n'),
+      blindAttempts: sum('attempts'),
+      blindConnected: sum('connected'),
+      blindOutstanding: sum('outstanding'),
+      measurableAccounts: this.N - sum('n'),
+      attemptSharePct: this.attempts ? sum('attempts') / this.attempts * 100 : 0,
+    };
+  }
+
   payload(reportDateDisplay, sources = null) {
     const N = this.N, resolved = this.res, unres = N - resolved;
+    /* Computed FIRST: three charts below refuse to be drawn over unmeasured accounts. */
+    const outcomeWindow = this._outcomeWindow();
+    const BLIND = outcomeWindow.blind || [];
     const totals = {
       accounts: N, resolved, unresolved: unres, sumOut: this.sumOut, recovered: this.recovered,
       outstandingPending: this.sumOut - this.recovered,
@@ -204,6 +330,12 @@ export class Aggregator {
       resolutionRatePct: N ? resolved / N * 100 : 0,
       sumMinDue: this.sumMinDue, avgOutstanding: N ? this.sumOut / N : 0,
       avgRecoveryPerResolved: resolved ? this.recovered / resolved : 0,
+      /* "States covered". The card used to render state.length, and _geo() files every
+         account with a blank state under "Unspecified" — so the blank bucket was being
+         counted as a state. On the 3 July book, 10 accounts carry no state and the card
+         proudly read 21. There are 20. A bank will check that one. */
+      statesCovered: [...this.state.keys()].filter((s) => s !== 'Unspecified').length,
+      statesUnspecified: this.state.get('Unspecified')?.count || 0,
     };
     const ai = {
       attempts: this.attempts, connected: this.connected, notConnected: this.attempts - this.connected,
@@ -296,27 +428,55 @@ export class Aggregator {
     const geoOut = (map) => { const o = {}; for (const [k, e] of map) o[k] = { ...e, resolutionPct: e.count ? e.resolved / e.count * 100 : 0, connectPct: e.attempts ? e.connected / e.attempts * 100 : 0 }; return o; };
     const region = geoOut(this.region);
     const state = Object.entries(geoOut(this.state)).map(([s, v]) => ({ state: s, ...v })).sort((a, b) => b.outstanding - a.outstanding);
-    const duration = DUR_ORDER.filter((b) => this.dur.get(b)).map((b) => { const d = this.dur.get(b); return { bucket: b, n: d.n, resolutionPct: d.res / d.n * 100, ptpPct: d.ptp / d.n * 100, paidPct: d.paid / d.n * 100, refusalPct: d.ref / d.n * 100 }; });
+    /* ── Duration, dial efficiency, duration×L2 ────────────────────────────────────
+       These three plot resolution AGAINST CALL BEHAVIOUR, which is precisely where an
+       unmeasured cohort does its damage (see _outcomeWindow). An account whose outcome
+       had not been recorded yet contributes a guaranteed zero, and it contributes it
+       to the buckets it was dialled hardest into. Left in, it does not add noise — it
+       adds bias, all in one direction, to the exact cells an exec reads causally.
+
+       So when a blind window exists, these charts are computed over the MEASURABLE
+       accounts only, and say so. Every other chart — the book, the money, the bands,
+       the regions, the dispositions — stays on the full book, because those are RBL's
+       own figures as RBL reported them and it is not our place to restate them. */
+    const duration = DUR_ORDER.filter((b) => this.dur.get(b)).map((b) => {
+      const d = this.dur.get(b);
+      const m = netOf(d, d.byDate, BLIND, ['n', 'res', 'ptp', 'paid', 'ref']);
+      return {
+        bucket: b, n: m.n, nAll: d.n, excluded: d.n - m.n,
+        thin: m.n > 0 && m.n < CELL_MIN,
+        resolutionPct: m.n ? m.res / m.n * 100 : 0,
+        ptpPct: m.n ? m.ptp / m.n * 100 : 0,
+        paidPct: m.n ? m.paid / m.n * 100 : 0,
+        refusalPct: m.n ? m.ref / m.n * 100 : 0,
+      };
+    }).filter((d) => d.n > 0);
     /* Duration × Disposition L2 cross-tab. Only dispositions with enough accounts to
        mean anything: a 100% resolution rate on 2 accounts is not an insight, it is a
        rounding error, and putting it top of a chart would get us laughed at. */
     const L2_MIN = 20;
-    const durationByL2 = [...this.durL2.entries()]
-      .filter(([, v]) => v.n >= L2_MIN)
-      .map(([name, v]) => ({
+    const durL2Net = [...this.durL2.entries()]
+      .map(([name, v]) => [name, v, netOf(v, v.byDate, BLIND, ['n', 'res', 'secs', 'recovered'])]);
+    const durationByL2 = durL2Net
+      .filter(([, , m]) => m.n >= L2_MIN)
+      .map(([name, v, m]) => ({
         name,
-        n: v.n,
-        resolutionPct: v.n ? v.res / v.n * 100 : 0,
-        avgSeconds: v.n ? v.secs / v.n : 0,
-        recovered: v.recovered,
+        n: m.n,
+        nAll: v.n,
+        excluded: v.n - m.n,
+        resolutionPct: m.n ? m.res / m.n * 100 : 0,
+        avgSeconds: m.n ? m.secs / m.n : 0,
+        recovered: m.recovered,
         buckets: DUR_ORDER.map((b) => {
           const d = v.buckets.get(b);
-          return { bucket: b, n: d ? d.n : 0, resolutionPct: d && d.n ? d.res / d.n * 100 : null };
+          if (!d) return { bucket: b, n: 0, resolutionPct: null };
+          const c = netOf(d, d.byDate, BLIND, ['n', 'res']);
+          return { bucket: b, n: c.n, resolutionPct: c.n ? c.res / c.n * 100 : null };
         }),
       }))
       .sort((a, b) => b.n - a.n);
     // Everything we filtered out, counted honestly rather than silently dropped.
-    const l2BelowThreshold = [...this.durL2.values()].filter((v) => v.n < L2_MIN).reduce((a, v) => a + v.n, 0);
+    const l2BelowThreshold = durL2Net.filter(([, , m]) => m.n < L2_MIN).reduce((a, [, , m]) => a + m.n, 0);
 
     const paymentModes = [...this.pm.entries()].map(([mode, v]) => ({ mode, ...v })).sort((a, b) => b.amount - a.amount);
     /* The Complete Collection Funnel.
@@ -410,7 +570,22 @@ export class Aggregator {
       { label: 'Claimed paid — unresolved', note: 'Reconciliation / verification', ...this.oppClaimed },
     ] };
     const entityTruth = { alreadyPaidReliabilityPct: this.paidYes ? this.paidYesRes / this.paidYes * 100 : 0, saidNoButResolved: this.saidNoRes, promisedButOpen: this.promisedOpen };
-    const dial = ATT_ORDER.filter((b) => this.dial.get(b)).map((b) => { const d = this.dial.get(b); return { band: b, n: d.n, connectPct: d.connect / d.n * 100, resolutionPct: d.resolved / d.n * 100 }; });
+    /* Dial efficiency. THE chart the blind window destroys — see _outcomeWindow().
+       Netting the unmeasured days out is not a cosmetic fix: on the 3 July book the
+       "13+ attempts" band drops from 732 accounts to 6, which is the honest answer.
+       We cannot say anything about heavily-dialled accounts from a status file that
+       predates the dialling, and a bar that says so is worth more than a bar that
+       says 0%. `thin` tells the UI to print the count instead of a percentage. */
+    const dial = ATT_ORDER.filter((b) => this.dial.get(b)).map((b) => {
+      const d = this.dial.get(b);
+      const m = netOf(d, d.byDate, BLIND, ['n', 'connect', 'resolved']);
+      return {
+        band: b, n: m.n, nAll: d.n, excluded: d.n - m.n,
+        thin: m.n > 0 && m.n < CELL_MIN,
+        connectPct: m.n ? m.connect / m.n * 100 : 0,
+        resolutionPct: m.n ? m.resolved / m.n * 100 : 0,
+      };
+    }).filter((d) => d.n > 0);
     /* ── The narrative. Derived from the model's own findings, never asserted. ───
        This paragraph used to hardcode its claims ("longer conversations convert far
        better", "promised to pay — a clear next-cycle target") and merely slot the
@@ -479,7 +654,7 @@ export class Aggregator {
          re-runs it against a different status pull and gets a different answer, that is a
          very bad meeting. The filenames ship with the payload now, and print on the cover. */
       meta: { reportDate: reportDateDisplay, accounts: N, source: 'Convin AI Collections — RBL Bank', sources: sources || [] },
-      agg: { totals, ai, aiReach, entity: this.entity, disposition, dispositionL2, band, bandOrder, segments, region, state, duration, durationOrder: DUR_ORDER, durationByL2, l2BelowThreshold, l2Min: L2_MIN, paymentModes, funnel, topOutstanding },
+      agg: { totals, ai, aiReach, entity: this.entity, disposition, dispositionL2, band, bandOrder, segments, region, state, duration, durationOrder: DUR_ORDER, durationByL2, l2BelowThreshold, l2Min: L2_MIN, paymentModes, funnel, topOutstanding, outcomeWindow },
       // Data-quality notes surfaced to the UI rather than swallowed. A bank would
       // rather be told its export is odd than see a chart quietly disagree with itself.
       quality: {

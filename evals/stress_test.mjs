@@ -79,9 +79,17 @@ const INVARIANTS = [
     const sum = p.agg.disposition.reduce((a, d) => a + d.total, 0);
     return sum === p.agg.totals.accounts ? null : `dispositions hold ${sum} of ${p.agg.totals.accounts}`;
   }],
-  ['call-duration chart accounts for every account', (p) => {
+  /* The duration chart must account for every account it is ENTITLED to count.
+     Normally that is the whole book. When the status file predated the calls, the
+     unmeasured accounts are deliberately excluded (see _outcomeWindow) — so the
+     denominator becomes the measurable book, and it must still be exact. A chart
+     that quietly drops accounts is the bug this invariant exists to catch; a chart
+     that loudly excludes them is the fix. */
+  ['call-duration chart accounts for every MEASURABLE account', (p) => {
+    const ow = p.agg.outcomeWindow;
+    const want = ow?.blindAccounts ? ow.measurableAccounts : p.agg.totals.accounts;
     const sum = p.agg.duration.reduce((a, d) => a + d.n, 0);
-    return sum === p.agg.totals.accounts ? null : `duration buckets hold ${sum} of ${p.agg.totals.accounts}`;
+    return sum === want ? null : `duration buckets hold ${sum} of ${want}`;
   }],
   ['funnel never widens (connected <= attempted <= total)', (p) => {
     const f = Object.fromEntries(p.agg.funnel.map((x) => [x.stage, x.value]));
@@ -138,6 +146,63 @@ const INVARIANTS = [
     if (promise.liftPts >= 5 && saysDontWork) return 'model says promises are good but the narrative says do not work them';
     return null;
   }],
+
+  /* ── The outcome window ──────────────────────────────────────────────────────
+     A status file pulled before the calls finished. The condition that put
+     "13+ attempts → 0% resolved" in front of a bank. See _outcomeWindow(). */
+  ['states covered never counts the Unspecified bucket', (p) => {
+    const named = p.agg.state.filter((s) => s.state !== 'Unspecified').length;
+    return p.agg.totals.statesCovered === named ? null
+      : `statesCovered ${p.agg.totals.statesCovered} != ${named} named states`;
+  }],
+  ['a blind window never swallows the whole book', (p) => {
+    const ow = p.agg.outcomeWindow;
+    if (!ow?.blindAccounts) return null;
+    return ow.blindAccounts < p.agg.totals.accounts ? null
+      : `every account (${ow.blindAccounts}) declared unmeasured — the status file is broken, not the cohort`;
+  }],
+  ['blind accounts + measurable accounts = the book', (p) => {
+    const ow = p.agg.outcomeWindow;
+    if (!ow?.hasCallDates || !ow.blindAccounts) return null;
+    const sum = ow.blindAccounts + ow.measurableAccounts;
+    return sum === p.agg.totals.accounts ? null : `${sum} != ${p.agg.totals.accounts} accounts`;
+  }],
+  ['a blind day really did resolve nobody', (p) => {
+    const ow = p.agg.outcomeWindow;
+    if (!ow?.blind?.length) return null;
+    const bad = ow.cohorts.filter((c) => ow.blind.includes(c.date) && c.res > 0);
+    return bad.length ? `${bad[0].date} was called blind but resolved ${bad[0].res}` : null;
+  }],
+  ['blind days are the LAST days, never a hole in the middle', (p) => {
+    const ow = p.agg.outcomeWindow;
+    if (!ow?.blind?.length) return null;
+    const dates = ow.cohorts.map((c) => c.date);
+    const tail = dates.slice(dates.length - ow.blind.length);
+    return JSON.stringify(tail) === JSON.stringify(ow.blind) ? null
+      : `blind ${JSON.stringify(ow.blind)} is not the trailing run of ${JSON.stringify(dates)}`;
+  }],
+  ['call-behaviour charts never count an unmeasured account', (p) => {
+    const ow = p.agg.outcomeWindow;
+    if (!ow?.blindAccounts) return null;
+    const dialN = p.intel.dial.reduce((a, d) => a + d.n, 0);
+    const durN = p.agg.duration.reduce((a, d) => a + d.n, 0);
+    if (dialN > ow.measurableAccounts) return `dial charts ${dialN} accounts but only ${ow.measurableAccounts} are measurable`;
+    if (durN !== ow.measurableAccounts) return `duration charts ${durN} accounts, expected ${ow.measurableAccounts}`;
+    return null;
+  }],
+  ['no chart prints a resolution rate for a cohort too thin to have one', (p) => {
+    const thin = [...p.intel.dial, ...p.agg.duration].filter((d) => d.n > 0 && d.n < 30 && !d.thin);
+    return thin.length ? `${thin[0].band || thin[0].bucket} has n=${thin[0].n} but is not flagged thin` : null;
+  }],
+  ['headline resolution is the FULL book, never the measurable subset', (p) => {
+    // The blind guard must never quietly restate RBL's own numbers. It trims the
+    // behavioural charts and nothing else.
+    const ow = p.agg.outcomeWindow;
+    if (!ow?.blindAccounts) return null;
+    const t = p.agg.totals;
+    return near(t.resolutionRatePct, t.accounts ? t.resolved / t.accounts * 100 : 0, 0.001)
+      ? null : 'headline resolution rate was computed on a subset of the book';
+  }],
 ];
 
 /* ── The adversarial books. Each is something a bank could really send. ─────── */
@@ -158,6 +223,41 @@ const CASES = {
   'connected calls but zero talk time': N(200, (i) => row({ ai_connected_calls: 2, ai_connected_seconds: 0, status: i % 3 ? 'Unresolved' : 'Resolved' })),
   'connected without ever being attempted (dirty export)': N(200, (i) => row({ ai_attempts: 0, ai_connected_calls: 2, status: i % 3 ? 'Unresolved' : 'Resolved' })),
   'one whale holding 90% of the book': N(200, (i) => row({ total_outstanding: i === 0 ? 5e8 : 30000, status: i % 3 ? 'Unresolved' : 'Resolved' })),
+  /* ── Books that exercise the outcome window ─────────────────────────────────
+     The real one: a status file pulled on the 6th, calls that ran to the 7th. The
+     last day resolves nobody — not because they refused, but because the file was
+     already written. This is the 3 July book in miniature. */
+  'status file pulled BEFORE the calls finished': N(600, (i) => {
+    const lastDay = i >= 500;                       // 100 accounts dialled past the pull
+    return row({
+      last_call_at: lastDay ? '2026-07-07' : (i % 2 ? '2026-07-05' : '2026-07-06'),
+      // Dialled hardest precisely because they never resolved — the whole trap.
+      ai_attempts: lastDay ? 15 : 3,
+      status: lastDay ? 'Unresolved' : (i % 3 ? 'Unresolved' : 'Resolved'),
+    });
+  }),
+  // A correctly-paired file must NOT trigger the guard. False positives here would
+  // hack the behavioural charts down for no reason, every single day.
+  'status file pulled AFTER the calls — no blind window': N(600, (i) => row({
+    last_call_at: i >= 500 ? '2026-07-07' : (i % 2 ? '2026-07-05' : '2026-07-06'),
+    ai_attempts: i >= 500 ? 15 : 3,
+    status: i % 3 ? 'Unresolved' : 'Resolved',      // the last day resolves normally
+  })),
+  // A genuinely bad last day, but too small to distinguish from luck. Say nothing.
+  'a tiny zero-resolution final day (below the blind threshold)': N(300, (i) => row({
+    last_call_at: i >= 290 ? '2026-07-07' : '2026-07-05',
+    status: i >= 290 ? 'Unresolved' : (i % 3 ? 'Unresolved' : 'Resolved'),
+  })),
+  // Nothing resolved anywhere. That is a broken status file, not a blind cohort —
+  // and declaring the entire book unmeasured would erase it.
+  'nothing resolved on any day (broken status file)': N(300, (i) => row({
+    last_call_at: i % 2 ? '2026-07-05' : '2026-07-06', status: 'Unresolved',
+  })),
+  // The lead export has no timestamp column at all. The guard must simply not fire.
+  'no call dates in the export at all': N(300, (i) => row({
+    last_call_at: '', status: i % 3 ? 'Unresolved' : 'Resolved',
+  })),
+
   'realistic book — promises are a trap': N(400, (i) => {
     const promised = i % 3 === 0;
     const resolved = promised ? i % 9 === 0 : i % 2 === 0;

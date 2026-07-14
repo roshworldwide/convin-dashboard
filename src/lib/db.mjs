@@ -23,7 +23,8 @@ const COLS = [
   'ai_attempts', 'ai_connected_calls', 'ai_connected_seconds', 'minimum_amount_due', 'total_outstanding',
   'total_accounts_with_customer', 'months_on_book', 'curr_bal_band', 'region', 'primary_state',
   'primary_city', 'mobile', 'model_logic', 'paid_flag', 'promise_flag', 'refusal_flag',
-  'refusal_reason', 'payment_mode', 'lead_link', 'segment', 'lead_score', 'batch_id', 'report_date',
+  'refusal_reason', 'payment_mode', 'lead_link', 'segment', 'lead_score', 'last_call_at',
+  'batch_id', 'report_date',
 ];
 
 // Bulk insert canonical rows for a batch (batched multi-row INSERT, ~1000/stmt).
@@ -45,7 +46,8 @@ export async function insertRows(rows, batchId, reportDate) {
           r.ai_attempts, r.ai_connected_calls, r.ai_connected_seconds, r.minimum_amount_due, r.total_outstanding,
           r.total_accounts_with_customer, r.months_on_book, r.curr_bal_band, r.region, r.primary_state,
           r.primary_city, r.mobile, r.model_logic, r.paid_flag, r.promise_flag, r.refusal_flag,
-          r.refusal_reason, r.payment_mode, r.lead_link, r.segment, r.lead_score, batchId, reportDate,
+          r.refusal_reason, r.payment_mode, r.lead_link, r.segment, r.lead_score,
+          r.last_call_at || null, batchId, reportDate,
         );
       });
       await client.query(`INSERT INTO account_rows (${COLS.join(',')}) VALUES ${values.join(',')}`, params);

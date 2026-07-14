@@ -47,13 +47,21 @@ machinery that stops a plausible-looking number from reaching a client:
   collapsed onto 964 strings. The app detects it, recovers the true number from another
   column in the same row, **proves** the recovery by re-running Excel's own rounding, and
   tells you it did.
+- **A status file older than the calls is caught.** The outcome is a snapshot; the calls run for
+  days. Pair a Monday snapshot with a campaign that ran to Thursday and every account still being
+  dialled comes back "Unresolved" — not because the customer refused, but because nobody had
+  looked yet. Nothing about it looks broken: every total is correct, every chart renders, and the
+  dial-efficiency chart draws a clean line to **0% resolved** on the accounts you called hardest.
+  It happened on the real book — 740 accounts, 12,130 dials, 30% of the campaign. The app now
+  detects it, says so in red, and refuses to draw the behavioural charts over accounts whose
+  outcome nobody has recorded.
 - A partial join is refused outright. Half a book counted at ₹0 is worse than no report.
 - Day Total is a **union of accounts**, not a sum of rows — upload the same book twice and
   the money does not double.
 - A stale cached report announces itself instead of silently dropping the sections it
   doesn't have.
 
-**286 invariant checks** guard this: `npm run test:all`.
+**462 invariant checks** guard this: `npm run test:all`.
 
 ## RoshRegression
 
@@ -95,7 +103,7 @@ on Vercel at all, which refuses any request body over 4.5 MB.
 
 ```bash
 npm run dev          # app + tunnel, one terminal
-npm run test:all     # 286 invariant checks
+npm run test:all     # 462 invariant checks
 npm run check:pii    # refuses to let customer data reach a commit
 npm run push         # parse 3 files locally → straight into Postgres
 npm run rebuild      # regenerate stored reports after an aggregator change

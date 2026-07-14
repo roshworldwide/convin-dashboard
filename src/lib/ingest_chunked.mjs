@@ -182,7 +182,7 @@ async function forEachRowOfBatch(batchId, onRow) {
     'ai_attempts', 'ai_connected_calls', 'ai_connected_seconds', 'minimum_amount_due', 'total_outstanding',
     'total_accounts_with_customer', 'months_on_book', 'curr_bal_band', 'region', 'primary_state',
     'primary_city', 'mobile', 'model_logic', 'paid_flag', 'promise_flag', 'refusal_flag',
-    'refusal_reason', 'payment_mode', 'lead_link', 'segment', 'lead_score',
+    'refusal_reason', 'payment_mode', 'lead_link', 'segment', 'lead_score', 'last_call_at',
   ];
   const { rows } = await pool.query(`SELECT ${cols.join(',')} FROM account_rows WHERE batch_id = $1`, [batchId]);
   for (const r of rows) onRow(r);

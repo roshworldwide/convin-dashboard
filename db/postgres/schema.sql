@@ -32,9 +32,16 @@ CREATE TABLE IF NOT EXISTS account_rows (
   lead_link                     text,
   segment                       text,
   lead_score                    text,
+  -- Calendar date of the LAST call placed to this account ("YYYY-MM-DD").
+  -- Not for charting. It is how the aggregator detects that the status file was
+  -- pulled BEFORE the calls finished — see ALIASES.last_call_at in normalize.mjs.
+  last_call_at                  text,
   batch_id                      text NOT NULL,
   report_date                   date NOT NULL
 );
+
+-- Migration for databases created before v6. Safe to re-run.
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS last_call_at text;
 
 -- Indexes for fast per-batch paging, filtering and sorting.
 CREATE INDEX IF NOT EXISTS idx_ar_batch            ON account_rows (batch_id);

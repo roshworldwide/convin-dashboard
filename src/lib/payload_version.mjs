@@ -22,5 +22,7 @@
  * v3  duration x disposition L2
  * v4  aiReach (lead-level connection), dispositionL2, 6-stage funnel
  * v5  meta.sources — WHICH FILES produced these numbers (see aggregate.mjs)
+ * v6  outcomeWindow — did the status file predate the calls? (see aggregate.mjs)
+ *     + totals.statesCovered excludes the "Unspecified" bucket
  */
-export const PAYLOAD_VERSION = 5;
+export const PAYLOAD_VERSION = 6;

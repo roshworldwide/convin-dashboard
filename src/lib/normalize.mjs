@@ -10,6 +10,25 @@ export const num = (x) => {
 };
 const U = (x) => String(x ?? '').trim().toUpperCase();
 
+/** A timestamp -> the calendar date it fell on, as "YYYY-MM-DD". Nothing else.
+ *  We only ever compare call dates to each other and group by them, so the clock
+ *  time is noise, and parsing it would drag timezones into a question that does not
+ *  have one. Accepts "2026-07-07 18:59:09", "2026-07-07T18:59:09Z", "07/07/2026",
+ *  and a real Date (SheetJS hands those back for date-typed cells). */
+export const dateOnly = (v) => {
+  if (v instanceof Date && !Number.isNaN(v.valueOf())) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+  }
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);            // 2026-07-07 …
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dmy = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);  // 07/07/2026 (D/M/Y)
+  if (dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2, '0')}-${String(dmy[1]).padStart(2, '0')}`;
+  return '';                                                   // unparseable -> absent, never a guess
+};
+
 export const bandNorm = (b) => String(b ?? '').trim().toUpperCase().replace(/\s/g, '');
 export const entityNorm = (v) => {
   const s = String(v ?? '').trim();
@@ -90,6 +109,23 @@ export const ALIASES = {
   payment_mode_raw: ["Lead Entity If payment done return 'Mode of Payment", 'Mode of Payment', 'Last payment mode'],
   lead_link: ['Lead Link'],
 
+  /* WHEN the AI last spoke to this account. Ingested for exactly one reason, and it
+     is not a chart.
+
+     The outcome comes from RBL's status file, which is a SNAPSHOT — pulled on some
+     date. The calls run over several days. If the snapshot is older than the calls,
+     then for every account still being dialled after the pull, the status file
+     records an outcome that had not happened yet. Those accounts come back
+     "Unresolved" not because they refused to pay, but because nobody had looked.
+
+     On the 3 July book this was 740 accounts — 12,130 dials, 30% of the campaign —
+     all reading exactly 0.0% resolved. It is invisible in every headline figure and
+     it makes "13+ attempts → 0% resolved" appear on a chart shown to the bank.
+
+     Without this column the app cannot see it. With it, outcomeWindow() in
+     aggregate.mjs catches it before the report is built. */
+  last_call_at: ['Last Call Timestamp', 'Last Call Time', 'Last Call Date', 'Last Interaction Time'],
+
   // ── From the CYC / PDD file ────────────────────────────────────────────────
   // RBL's own risk segment (Red / Amber / Green). The bank's view of the account,
   // formed before we ever dialled it — which makes it the one signal on this list
@@ -116,6 +152,7 @@ export const FIELD_LABELS = {
   promise_flag: 'Entity · Promise to Pay', refusal_flag: 'Entity · Refusal to Pay',
   payment_mode_raw: 'Mode of Payment', lead_link: 'Lead Link',
   segment: 'Segment (RBL)', lead_score: 'Lead Collection Score',
+  last_call_at: 'Last Call Timestamp',
 };
 
 /* Ordered groups for the column-mapping UI.
@@ -130,7 +167,7 @@ export const FIELD_GROUPS = [
   { title: 'Required', keys: ['account_no', 'status', 'total_outstanding'] },
   { title: 'Money & customer', keys: ['customer_name', 'minimum_amount_due', 'curr_bal_band', 'months_on_book', 'total_accounts_with_customer', 'segment'] },
   { title: 'Geography', keys: ['region', 'primary_state', 'primary_city', 'mobile'] },
-  { title: 'AI calling', keys: ['ai_attempts', 'ai_connected_calls', 'ai_connected_seconds', 'lead_score'] },
+  { title: 'AI calling', keys: ['ai_attempts', 'ai_connected_calls', 'ai_connected_seconds', 'last_call_at', 'lead_score'] },
   { title: 'Outcomes & entities', keys: ['disp_l1', 'disp_l2', 'qual_status', 'goal_achieved', 'paid_flag', 'promise_flag', 'refusal_flag', 'payment_mode_raw'] },
   { title: 'Other', keys: ['model_logic', 'lead_link'] },
 ];
@@ -357,6 +394,9 @@ export function normalizeMap(rec, mapping) {
     refusal_reason: refusalRaw && U(refusalRaw) !== 'NA' ? refusalRaw : '',
     payment_mode: payBucket(g('payment_mode_raw')) || 'NA',
     lead_link: String(g('lead_link')).trim(),
+    // Date only. See ALIASES.last_call_at — this is what lets the aggregator notice
+    // that the outcome file was pulled before the calls finished.
+    last_call_at: dateOnly(g('last_call_at')),
     // RBL's segment for the account. NOTE: in the CYC/PDD exports we have seen, this
     // is "Red" on every single row — the whole file IS the red segment. It is kept
     // because other cycles may vary, but do not expect it to predict anything here.

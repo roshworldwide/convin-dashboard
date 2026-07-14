@@ -56,6 +56,14 @@ const fmtCr = (n) => {
 const fmtINR = (n) => '₹' + Math.round(n || 0).toLocaleString('en-IN');
 const fmtInt = (n) => Math.round(n || 0).toLocaleString('en-IN');
 const pct = (n, d = 1) => (n || 0).toFixed(d) + '%';
+/** "2026-07-07" -> "7 July". Dates only ever come from dateOnly() in normalize.mjs,
+    so they are always YYYY-MM-DD — parsed by hand rather than via new Date(), which
+    would read them as UTC and print the wrong day west of Greenwich. */
+const fmtDay = (iso) => {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso || '—';
+  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+};
 
 /* ============================ shared styles ============================ */
 const GLASS = {
@@ -544,6 +552,9 @@ export default function Report({ shareToken = null }) {
   }
 
   const A = data.agg, I = data.intel, t = A.totals;
+  /* The blind window, if the status file predated the calls. Absent on v5 and older
+     payloads — those simply never looked, which is what `npm run rebuild` is for. */
+  const OW = A.outcomeWindow;
   const kpis = [
     { label: 'Recovered', value: fmtCr(t.recovered), sub: `${pct(t.recoveryRatePct)} of outstanding`, color: C.green },
     { label: 'Resolution Rate', value: pct(t.resolutionRatePct), sub: `${fmtInt(t.resolved)} of ${fmtInt(t.accounts)} accounts`, color: C.blue },
@@ -1112,6 +1123,41 @@ export default function Report({ shareToken = null }) {
           </div>
         )}
 
+        {/* ===== OUTCOME WINDOW =====
+            The status file was pulled BEFORE the calls finished.
+
+            This is the most dangerous condition this app can be in, because nothing
+            about it looks broken. Every total is correct. Every chart renders. The
+            book adds up. And a cohort of accounts — the ones dialled hardest, right up
+            to the last day — carries an outcome nobody had recorded yet, so they all
+            come back Unresolved and the dial-efficiency chart draws a clean line to
+            0%. We shipped exactly that to a bank once. Never again silently. */}
+        {OW?.blindAccounts > 0 && (
+          <div style={{
+            ...GLASS, borderRadius: 18, padding: '16px 20px', marginBottom: 16,
+            border: '1px solid rgba(255,59,48,.42)', background: 'rgba(255,59,48,.07)',
+          }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#c0392b', marginBottom: 5 }}>
+              The outcome file is older than the calls — {fmtInt(OW.blindAccounts)} accounts have no result yet
+            </div>
+            <div style={{ fontSize: 13, color: ink(.74), lineHeight: 1.65 }}>
+              Calls ran until <b>{fmtDay(OW.lastCallDate)}</b>, but the status file stops seeing resolutions after{' '}
+              <b>{fmtDay(OW.outcomeSeenTo)}</b>. Every account still being dialled after that reads{' '}
+              <i>Unresolved</i> — not because the customer refused, but because <b>nobody had looked yet</b>.
+              {' '}<b>{fmtInt(OW.blindAccounts)} accounts</b>, <b>{fmtInt(OW.blindAttempts)} dials</b>
+              {OW.attemptSharePct >= 1 && <> ({pct(OW.attemptSharePct, 0)} of the whole campaign)</>} and{' '}
+              <b>{fmtCr(OW.blindOutstanding)}</b> of outstanding are sitting at exactly 0% resolved.
+              <br /><br />
+              <b>The headline resolution rate is therefore a floor, not the result.</b> Conversation Duration,
+              Dial Efficiency and Duration × L2 are drawn over the {fmtInt(OW.measurableAccounts)} accounts whose
+              outcome could actually be observed, and say so. Every other figure on this page is the full book
+              exactly as RBL reported it.
+              <br /><br />
+              <b>Fix:</b> re-run this report with a status file pulled <i>after</i> {fmtDay(OW.lastCallDate)}.
+            </div>
+          </div>
+        )}
+
         {/* ===== Data-quality notice =====
             Anything odd about the export is said out loud. A bank would far rather be
             told its file is strange than discover, later, that a chart quietly
@@ -1156,7 +1202,10 @@ export default function Report({ shareToken = null }) {
               { l: 'Total minimum due', v: fmtCr(t.sumMinDue), c: C.teal },
               { l: 'Average outstanding / account', v: fmtINR(t.avgOutstanding), c: C.purple },
               { l: 'Balance bands in the book', v: fmtInt(A.bandOrder.length), c: C.cyan },
-              { l: 'States covered', v: fmtInt(A.state.length), c: C.orange },
+              /* statesCovered — NOT state.length. The state list carries an "Unspecified"
+                 bucket so the geography charts still add up to the book, and counting that
+                 bucket as a state read 21 when there are 20. See totals in aggregate.mjs. */
+              { l: 'States covered', v: fmtInt(A.totals.statesCovered ?? A.state.filter((s) => s.state !== 'Unspecified').length), c: C.orange },
             ].map((r, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 0', borderTop: i ? `1px solid ${ink(.07)}` : 'none' }}>
                 <span style={{ fontSize: 13, color: ink(.65) }}>{r.l}</span>
@@ -1332,6 +1381,12 @@ export default function Report({ shareToken = null }) {
                 </div>
               ))}
             </div>
+            {OW?.blindAccounts > 0 && (
+              <div style={{ fontSize: 11, color: ink(.4), marginTop: 10 }}>
+                Excludes {fmtInt(OW.blindAccounts)} accounts whose calls continued past the outcome file
+                ({fmtDay(OW.outcomeSeenTo)}) — their result is not yet known.
+              </div>
+            )}
           </Card>
           <Card span={4}>
             <Title t="AI Calling Performance" s="Engagement at scale" />
@@ -1553,15 +1608,25 @@ export default function Report({ shareToken = null }) {
               <div key={i} style={{ marginBottom: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
                   <span style={{ color: ink(.68) }}>{d.band} attempts · n={fmtInt(d.n)}</span>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{pct(d.resolutionPct, 0)} resolved</span>
+                  {/* A percentage of 6 accounts is not a rate. Print the count. */}
+                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: d.thin ? ink(.45) : undefined }}>
+                    {d.thin ? 'too few to rate' : `${pct(d.resolutionPct, 0)} resolved`}
+                  </span>
                 </div>
-                <div style={{ display: 'flex', gap: 4, height: 9 }}>
-                  <div style={{ height: '100%', borderRadius: 5, width: `${d.connectPct}%`, background: C.cyan, opacity: .5 }} />
-                  <div style={{ height: '100%', borderRadius: 5, width: `${d.resolutionPct}%`, background: C.green, marginLeft: -4 }} />
-                </div>
+                {!d.thin && (
+                  <div style={{ display: 'flex', gap: 4, height: 9 }}>
+                    <div style={{ height: '100%', borderRadius: 5, width: `${d.connectPct}%`, background: C.cyan, opacity: .5 }} />
+                    <div style={{ height: '100%', borderRadius: 5, width: `${d.resolutionPct}%`, background: C.green, marginLeft: -4 }} />
+                  </div>
+                )}
               </div>
             ))}
-            <div style={{ fontSize: 11, color: ink(.4), marginTop: 6 }}>Faded = connect rate · Solid = resolution. Accounts still open past 10+ attempts are the hard core.</div>
+            <div style={{ fontSize: 11, color: ink(.4), marginTop: 6 }}>
+              Faded = connect rate · Solid = resolution.
+              {OW?.blindAccounts > 0
+                ? <> Excludes {fmtInt(OW.blindAccounts)} accounts still being dialled after the outcome file was pulled ({fmtDay(OW.outcomeSeenTo)}) — their result is not known, and counting them as failures would drive the heavily-dialled bands to a false zero.</>
+                : <> The dialler stops once an account resolves, so attempts and outcome are not independent — read this as description, not cause.</>}
+            </div>
           </Card>
         </div>
 
@@ -1817,6 +1882,7 @@ export default function Report({ shareToken = null }) {
                 Shaded cells are resolution rate; cells with fewer than 10 accounts show the raw count instead, because a
                 percentage of eight accounts is not a finding.
                 {A.l2BelowThreshold > 0 && ` ${fmtInt(A.l2BelowThreshold)} accounts sit in L2 dispositions with fewer than ${A.l2Min} accounts each and are not charted.`}
+                {OW?.blindAccounts > 0 && ` Excludes ${fmtInt(OW.blindAccounts)} accounts still being dialled after the outcome file was pulled (${fmtDay(OW.outcomeSeenTo)}) — their result is not yet known, so counts here are lower than in the Disposition L2 table above, which is the full book.`}
                 {l2Longest && l2Longest.resolutionPct < t.resolutionRatePct && (
                   <>
                     {' '}<b style={{ color: '#C9302C' }}>Note the top of the &quot;Avg talk&quot; column:</b> the longest conversations in this book end in{' '}
