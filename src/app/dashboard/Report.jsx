@@ -1441,40 +1441,37 @@ export default function Report({ shareToken = null }) {
           );
         })()}
 
-        {/* ===== OUTCOME WINDOW =====
-            The status file was pulled BEFORE the calls finished.
-
-            This is the most dangerous condition this app can be in, because nothing
-            about it looks broken. Every total is correct. Every chart renders. The
-            book adds up. And a cohort of accounts — the ones dialled hardest, right up
-            to the last day — carries an outcome nobody had recorded yet, so they all
-            come back Unresolved and the dial-efficiency chart draws a clean line to
-            0%. We shipped exactly that to a bank once. Never again silently. */}
-        {OW?.blindAccounts > 0 && (
-          <div style={{
-            ...GLASS, borderRadius: 18, padding: '16px 20px', marginBottom: 16,
-            border: '1px solid rgba(255,59,48,.42)', background: 'rgba(255,59,48,.07)',
-          }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#c0392b', marginBottom: 5 }}>
-              The outcome file is older than the calls — {fmtInt(OW.blindAccounts)} accounts have no result yet
-            </div>
-            <div style={{ fontSize: 13, color: txt(.74), lineHeight: 1.65 }}>
-              Calls ran until <b>{fmtDay(OW.lastCallDate)}</b>, but the status file stops seeing resolutions after{' '}
-              <b>{fmtDay(OW.outcomeSeenTo)}</b>. Every account still being dialled after that reads{' '}
-              <i>Unresolved</i> — not because the customer refused, but because <b>nobody had looked yet</b>.
-              {' '}<b>{fmtInt(OW.blindAccounts)} accounts</b>, <b>{fmtInt(OW.blindAttempts)} dials</b>
-              {OW.attemptSharePct >= 1 && <> ({pct(OW.attemptSharePct, 0)} of the whole campaign)</>} and{' '}
-              <b>{fmtCr(OW.blindOutstanding)}</b> of outstanding are sitting at exactly 0% resolved.
-              <br /><br />
-              <b>The headline resolution rate is therefore a floor, not the result.</b> Conversation Duration,
-              Dial Efficiency and Duration × L2 are drawn over the {fmtInt(OW.measurableAccounts)} accounts whose
-              outcome could actually be observed, and say so. Every other figure on this page is the full book
-              exactly as RBL reported it.
-              <br /><br />
-              <b>Fix:</b> re-run this report with a status file pulled <i>after</i> {fmtDay(OW.lastCallDate)}.
-            </div>
-          </div>
-        )}
+        {/* ═══════════════════════ THE OUTCOME-WINDOW BANNER IS GONE ═══════════════
+         *
+         * REMOVED ON THE CLIENT'S EXPLICIT INSTRUCTION (14 July 2026), after being told
+         * plainly what it was for. Recording that here rather than quietly deleting the
+         * code, because whoever finds this next deserves to know it was a decision and
+         * not an oversight.
+         *
+         * WHAT IT DID
+         * The status file is a snapshot; the calls run for days. Pair a 4 July snapshot
+         * with a campaign that ran to 7 July and every account still being dialled after
+         * the pull comes back "Unresolved" — not because the customer refused, but
+         * because nobody had looked yet. On the real book that was 740 accounts, 12,130
+         * dials (30% of the campaign) and ₹5.74 Cr, all reading exactly 0.0% resolved.
+         * The banner said so, in red, and told you to re-pull the status file.
+         *
+         * WHAT IS STILL HERE
+         * The DETECTION is untouched. _outcomeWindow() in aggregate.mjs still finds the
+         * blind cohort, and Conversation Duration, Dial Efficiency and Duration × L2 are
+         * still computed over the measurable accounts only — so those charts cannot show
+         * a false 0%, and each still carries a one-line footnote saying what it excluded
+         * and why. Only the page-level warning is gone.
+         *
+         * WHAT THAT COSTS
+         * Nothing now warns you, on a future upload, that an outcome file predates the
+         * calls. The headline resolution rate can be a floor rather than a result, and
+         * the page will not say so. That is a silent condition again — which is the exact
+         * failure mode this app was built to refuse.
+         *
+         * The fix was never the banner. It is to upload a status file pulled AFTER the
+         * last call. Do that and the condition disappears on its own.
+         * ══════════════════════════════════════════════════════════════════════════ */}
 
         {/* ===== Data-quality notice =====
             Anything odd about the export is said out loud. A bank would far rather be
