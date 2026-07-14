@@ -1099,7 +1099,7 @@ export default function Report({ shareToken = null }) {
             {[
               { l: 'Recovered', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of outstanding`, c: '#248A3D' },
               { l: 'Accounts resolved', v: fmtInt(t.resolved), s: `${pct(t.resolutionRatePct, 1)} of the book`, c: '#0071E3' },
-              { l: 'Book worked', v: fmtInt(t.accounts), s: fmtCr(t.sumOut) + ' outstanding', c: '#5856D6' },
+              { l: 'Accounts', v: fmtInt(t.accounts), s: fmtCr(t.sumOut) + ' outstanding', c: '#5856D6' },
               { l: 'Still open', v: fmtCr(t.outstandingPending), s: `${fmtInt(t.unresolved)} accounts`, c: '#FF9500' },
             ].map((k, i) => (
               <div key={i} style={{ border: '1px solid rgba(0,0,0,.12)', borderRadius: 10, padding: '13px 14px' }}>
