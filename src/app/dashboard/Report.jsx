@@ -390,14 +390,19 @@ function SummaryView({ s }) {
         </Card>
       )}
 
-      {/* ── Headline ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 16 }}>
+      {/* ── Headline ──────────────────────────────────────────────────────────────
+          A PLAIN div, not <Card>. Card sets `gridColumn: span 12`, which overrode the
+          4-column grid and made every card full width — four stacked banners instead of
+          a row. Same markup as the KPI row on the report page, so the two pages look
+          like one product rather than two. */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${head.length},1fr)`, gap: 16, marginBottom: 16 }}>
         {head.map((k, i) => (
-          <Card key={i} span={12} style={{ padding: '18px 20px' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: txt(.5), marginBottom: 8 }}>{k.l}</div>
-            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-.02em', color: k.c, fontVariantNumeric: 'tabular-nums' }}>{k.v}</div>
-            <div style={{ fontSize: 12, color: txt(.45), marginTop: 4 }}>{k.s}</div>
-          </Card>
+          <div className="hover-kpi" key={i} style={{ ...GLASS, borderRadius: 22, padding: '22px 20px', animation: 'fadeUp .7s cubic-bezier(.32,.72,0,1) both' }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: k.c, marginBottom: 14, boxShadow: `0 0 12px ${k.c}` }} />
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.5), marginBottom: 8 }}>{k.l}</div>
+            <div style={{ fontSize: 27, fontWeight: 700, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums', marginBottom: 6 }}>{k.v}</div>
+            <div style={{ fontSize: 12.5, color: txt(.48) }}>{k.s}</div>
+          </div>
         ))}
       </div>
 
