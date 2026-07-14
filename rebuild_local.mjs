@@ -93,10 +93,20 @@ for (const [iso, dayFiles] of [...byDate].sort()) {
   let fixed = 0;
   for (const d of man.dates || []) {
     const n = dayCounts.get(d.date);
-    if (n === undefined || d.rowCount === n) continue;
-    console.log(`  manifest: ${d.date} rowCount ${d.rowCount.toLocaleString('en-IN')} → ${n.toLocaleString('en-IN')} (deduplicated)`);
-    d.rowCount = n;
-    fixed++;
+    if (n !== undefined && d.rowCount !== n) {
+      console.log(`  manifest: ${d.date} rowCount ${d.rowCount.toLocaleString('en-IN')} → ${n.toLocaleString('en-IN')} (deduplicated)`);
+      d.rowCount = n;
+      fixed++;
+    }
+    /* "Upload 1" → "Day 1". The tabs are labelled from the manifest, so a report filed
+       before the rename would keep the old wording forever otherwise. */
+    for (const u of d.uploads || []) {
+      if (!/^Upload\b/i.test(u.label || '')) continue;
+      const next = u.label.replace(/^Upload\b/i, 'Day');
+      console.log(`  manifest: ${d.date} "${u.label}" → "${next}"`);
+      u.label = next;
+      fixed++;
+    }
   }
   if (fixed) await writeJson(manPath, man);
 }

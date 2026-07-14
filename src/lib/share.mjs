@@ -72,7 +72,10 @@ export const newToken = () => randomBytes(32).toString('base64url');
 export function sanitizeForShare(payload) {
   const p = JSON.parse(JSON.stringify(payload));
 
-  // Internal provenance (which files we joined) is ours, not the recipient's.
+  /* The full source list (status file, lead export, row counts) is internal — it is
+     Convin's working detail, not the recipient's. But meta.cycFile stays: it names
+     RBL's OWN book, and a report a bank cannot tie back to an exact file is a report
+     a bank cannot check. Kept on purpose, not overlooked. */
   if (p.meta) p.meta.sources = [];
 
   delete p.rows;

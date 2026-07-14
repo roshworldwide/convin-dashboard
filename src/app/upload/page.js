@@ -295,12 +295,12 @@ export default function Upload() {
               style={{ width: '100%', padding: '11px 16px', fontSize: 13.5, borderRadius: 999, border: '1px solid ' + ink(.14), background: 'var(--input-bg)', outline: 'none', color: 'var(--text)' }} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: ink(.5), marginBottom: 6 }}>Upload #</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: ink(.5), marginBottom: 6 }}>Day #</div>
             <input type="number" min={1} value={slot} onChange={(e) => setSlot(e.target.value)}
               style={{ width: '100%', padding: '11px 16px', fontSize: 13.5, borderRadius: 999, border: '1px solid ' + ink(.14), background: 'var(--input-bg)', outline: 'none', color: 'var(--text)' }} />
           </div>
         </div>
-        <div style={{ fontSize: 11.5, color: ink(.45), marginTop: 8 }}>Use 1 for the day&apos;s first file; 2, 3… for more of the same day (each becomes a tab).</div>
+        <div style={{ fontSize: 11.5, color: ink(.45), marginTop: 8 }}>Becomes the tab label — <b>Day 1</b>, <b>Day 2</b>… Re-uploading the same number <b>replaces</b> that day; it never adds to it.</div>
 
         {error && <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 16, background: 'rgba(255,59,48,.1)', color: '#FF3B30', fontSize: 13, fontWeight: 500 }}>{error}</div>}
 

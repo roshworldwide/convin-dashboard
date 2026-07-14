@@ -653,7 +653,19 @@ export class Aggregator {
          which file made it. Six weeks later nobody can reconstruct it, and if the bank
          re-runs it against a different status pull and gets a different answer, that is a
          very bad meeting. The filenames ship with the payload now, and print on the cover. */
-      meta: { reportDate: reportDateDisplay, accounts: N, source: 'Convin AI Collections — RBL Bank', sources: sources || [] },
+      /* cycFile is deliberately its OWN meta field rather than something the UI digs
+         out of `sources` — because sanitizeForShare() blanks `sources` before a report
+         goes to RBL, and the CYC filename is the one piece of provenance that is meant
+         to survive that. It is the bank's own file name; naming it is what lets anyone
+         reading the report tie a number back to an exact book. */
+      meta: {
+        reportDate: reportDateDisplay,
+        accounts: N,
+        source: 'Convin AI Collections — RBL Bank',
+        cycFile: (sources || []).find((s) => s.detected === 'cyc')?.name
+          || (sources || []).find((s) => /primary/i.test(s.slot || ''))?.name || '',
+        sources: sources || [],
+      },
       agg: { totals, ai, aiReach, entity: this.entity, disposition, dispositionL2, band, bandOrder, segments, region, state, duration, durationOrder: DUR_ORDER, durationByL2, l2BelowThreshold, l2Min: L2_MIN, paymentModes, funnel, topOutstanding, outcomeWindow },
       // Data-quality notes surfaced to the UI rather than swallowed. A bank would
       // rather be told its export is odd than see a chart quietly disagree with itself.

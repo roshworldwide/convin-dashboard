@@ -83,7 +83,7 @@ export async function ingestLocalUpload(canon, { reportDate, slot = 1, filename 
   let d = man.dates.find((x) => x.date === iso);
   if (!d) { d = { date: iso, display: disp, dayTotal: dt, uploads: [], rowCount: 0 }; man.dates.push(d); }
   d.display = disp; d.dayTotal = dt; d.rowCount = count;
-  const entry = { id: bid, label: `Upload ${slot}`, time: uploadTime, filename, rowCount: canon.length, sources };
+  const entry = { id: bid, label: `Day ${slot}`, time: uploadTime, filename, rowCount: canon.length, sources };
   const ei = d.uploads.findIndex((u) => u.id === bid);
   if (ei >= 0) d.uploads[ei] = entry; else d.uploads.push(entry);
   d.uploads.sort((a, b) => a.id.localeCompare(b.id));

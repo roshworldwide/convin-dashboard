@@ -69,6 +69,12 @@ CREATE TABLE IF NOT EXISTS batches (
 );
 CREATE INDEX IF NOT EXISTS idx_batches_date ON batches (report_date, uploaded_at);
 
+-- Tabs used to read "Upload 1 / Upload 2". They are days, and they are now labelled
+-- as such. Batches filed before the rename keep the old label unless we rewrite it.
+-- Idempotent: the WHERE clause makes a second run a no-op.
+UPDATE batches SET label = 'Day ' || substring(label from 8)
+ WHERE label LIKE 'Upload %';
+
 -- NOTE (scale): at high retention you can convert account_rows to a
 -- range-partitioned table on report_date (one partition/day or /month) and drop
 -- old partitions cheaply. The app code is unchanged — only the DDL differs.

@@ -107,7 +107,7 @@ export async function commitBatch({ batchId, reportDate, slot, filename, uploadT
 
   if (hasDb()) {
     await upsertBatch(
-      { id: batchId, reportDate, filename, rowCount: canon.length, kind: 'upload', label: `Upload ${slot}`, uploadTime },
+      { id: batchId, reportDate, filename, rowCount: canon.length, kind: 'upload', label: `Day ${slot}`, uploadTime },
       payload,
     );
     await recomputeDayTotalDb(reportDate);
@@ -131,9 +131,23 @@ async function recomputeDayTotalDb(reportDate) {
   });
   const agg = new Aggregator();
   for (const r of byAccount.values()) agg.add(r);
+
+  /* The Day Total is assembled from rows, not files, so it has no sources of its own —
+     and without them its cover would print no source book while every individual day
+     printed one. Collect them back off the day's uploads. (The local path already does
+     this; the Postgres path did not, and the difference would only ever have shown up
+     in production.) */
+  const { getPool } = await import('./db.mjs');
+  const pool = await getPool();
+  const { rows: batches } = await pool.query(
+    `SELECT payload->'meta'->'sources' AS sources FROM batches
+      WHERE report_date = $1 AND kind = 'upload' ORDER BY id`, [reportDate],
+  );
+  const daySources = batches.flatMap((b) => b.sources || []);
+
   await upsertBatch(
     { id: `${reportDate}__daytotal`, reportDate, filename: '', rowCount: byAccount.size, kind: 'daytotal', label: 'Day Total', uploadTime: '' },
-    agg.payload(displayDate(reportDate)),
+    agg.payload(displayDate(reportDate), daySources),
   );
 }
 
@@ -163,7 +177,7 @@ async function recomputeDayTotalLocal(iso, disp, entry) {
   if (!d) { d = { date: iso, display: disp, dayTotal: dt, uploads: [], rowCount: 0 }; man.dates.push(d); }
   d.display = disp; d.dayTotal = dt; d.rowCount = union.rows.length;
 
-  const u = { id: entry.batchId, label: `Upload ${entry.slot}`, time: entry.uploadTime, filename: entry.filename, rowCount: entry.rowCount };
+  const u = { id: entry.batchId, label: `Day ${entry.slot}`, time: entry.uploadTime, filename: entry.filename, rowCount: entry.rowCount };
   const i = d.uploads.findIndex((x) => x.id === entry.batchId);
   if (i >= 0) d.uploads[i] = u; else d.uploads.push(u);
   d.uploads.sort((a, b) => a.id.localeCompare(b.id));

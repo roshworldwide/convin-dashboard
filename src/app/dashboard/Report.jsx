@@ -59,6 +59,12 @@ const pct = (n, d = 1) => (n || 0).toFixed(d) + '%';
 /** "2026-07-07" -> "7 July". Dates only ever come from dateOnly() in normalize.mjs,
     so they are always YYYY-MM-DD — parsed by hand rather than via new Date(), which
     would read them as UTC and print the wrong day west of Greenwich. */
+/** Tab label for one upload. These are stored in the manifest, and every report filed
+    before this rename still says "Upload 1". `npm run rebuild` migrates them properly,
+    but the UI must not depend on that having been run — a report whose tab says
+    "Upload 3" while the upload screen says "Day 3" is the kind of small inconsistency
+    that makes someone distrust the big numbers. So we rename on read as well. */
+const dayLabel = (u) => String(u?.label || '').replace(/^Upload\b/i, 'Day') || 'Day';
 const fmtDay = (iso) => {
   const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return iso || '—';
@@ -988,7 +994,7 @@ export default function Report({ shareToken = null }) {
         {!shareToken && manifest && manifest.dates && manifest.dates.length > 0 && (() => {
           const day = manifest.dates[dateIdx];
           const tabs = [{ id: day.dayTotal, label: 'Day Total', meta: `${fmtInt(day.rowCount)} accounts` },
-            ...day.uploads.map((u) => ({ id: u.id, label: u.label, meta: u.time || `${fmtInt(u.rowCount)} rows` }))];
+            ...day.uploads.map((u) => ({ id: u.id, label: dayLabel(u), meta: u.time || `${fmtInt(u.rowCount)} rows` }))];
           return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', padding: '28px 0 2px', animation: 'fadeUp .6s cubic-bezier(.32,.72,0,1) both' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...GLASS, borderRadius: 999, padding: '7px 10px 7px 16px' }}>
@@ -1035,9 +1041,16 @@ export default function Report({ shareToken = null }) {
           <h1 style={{ fontSize: 40, lineHeight: 1.08, fontWeight: 700, letterSpacing: '-.028em', margin: '26px 0 6px', color: '#1D1D1F' }}>
             Recovery Intelligence
           </h1>
-          <div style={{ fontSize: 19, color: '#6E6E73', fontWeight: 500, marginBottom: 30 }}>
+          <div style={{ fontSize: 19, color: '#6E6E73', fontWeight: 500, marginBottom: data.meta.cycFile ? 8 : 30 }}>
             RBL Bank &nbsp;·&nbsp; prepared by Convin &nbsp;·&nbsp; {data.meta.reportDate}
           </div>
+          {/* The exact book these numbers were computed from. A report a bank cannot tie
+              back to a specific file is a report a bank cannot check. */}
+          {data.meta.cycFile && (
+            <div style={{ fontSize: 12.5, color: '#86868B', marginBottom: 30, fontVariantNumeric: 'tabular-nums' }}>
+              Source book: <span style={{ color: '#3A3A3C', fontWeight: 600 }}>{data.meta.cycFile}</span>
+            </div>
+          )}
 
           {/* The four numbers a COO wants before reading anything else. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 26 }}>
@@ -1095,6 +1108,12 @@ export default function Report({ shareToken = null }) {
           <p style={{ fontSize: 18, lineHeight: 1.5, color: ink(.6), maxWidth: 680, margin: 0, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .1s' }}>
             Convin&apos;s AI worked {fmtInt(t.accounts)} RBL accounts holding {fmtCr(t.sumOut)} in outstanding — resolving {fmtInt(t.resolved)} of them ({pct(t.resolutionRatePct)}) across {fmtInt(A.ai.attempts)} calls.
           </p>
+          {/* Same provenance line as the printed cover, on screen. */}
+          {data.meta.cycFile && (
+            <div style={{ fontSize: 13, color: ink(.45), marginTop: 16, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .15s' }}>
+              Source book: <span style={{ color: ink(.7), fontWeight: 600 }}>{data.meta.cycFile}</span>
+            </div>
+          )}
         </div>
 
         {/* ===== Stale-report notice =====

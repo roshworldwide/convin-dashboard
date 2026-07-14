@@ -32,7 +32,7 @@ export async function ingestUpload(canon, { reportDate, slot = 1, filename = '',
   }
   if (buf.length) await insertRows(buf, batchId, iso);
 
-  await upsertBatch({ id: batchId, reportDate: iso, filename, rowCount: count, kind: 'upload', label: `Upload ${slot}`, uploadTime }, agg.payload(disp, sources));
+  await upsertBatch({ id: batchId, reportDate: iso, filename, rowCount: count, kind: 'upload', label: `Day ${slot}`, uploadTime }, agg.payload(disp, sources));
   await recomputeDayTotal(iso);
   return { batchId, rowCount: count };
 }

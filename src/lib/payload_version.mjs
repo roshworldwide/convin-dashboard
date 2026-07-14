@@ -24,5 +24,7 @@
  * v5  meta.sources — WHICH FILES produced these numbers (see aggregate.mjs)
  * v6  outcomeWindow — did the status file predate the calls? (see aggregate.mjs)
  *     + totals.statesCovered excludes the "Unspecified" bucket
+ * v7  meta.cycFile — the CYC book each report was computed from, printed on the
+ *     cover and SURVIVES sanitizeForShare (unlike meta.sources, which does not)
  */
-export const PAYLOAD_VERSION = 6;
+export const PAYLOAD_VERSION = 7;
