@@ -1,0 +1,40 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# REAL CUSTOMER DATA — NEVER UPLOAD TO VERCEL
+#
+# .gitignore keeps this data out of git. It does NOT keep it out of Vercel:
+# `vercel deploy` uploads the WORKING TREE, not the git tree, so every file
+# .gitignore hides from a commit still went up with the deployment — and
+# src/app/api/status/route.js reads src/data/status_data.json off disk at
+# runtime and serves it. That is 365,440 RBL account numbers on a public URL.
+#
+# `npm run check:pii` cannot see this: it greps what git would stage.
+# This file is the same guard for the deploy path. Keep the two in step.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# The local data store: source CSV, canonical rows, explorer rows, batch payloads.
+# Trailing /* then a negation — a file inside an EXCLUDED DIRECTORY cannot be
+# re-admitted, so exclude the contents and re-admit the one safe file.
+src/data/*
+# ...except the model's measured credentials. Aggregate statistics only — no
+# account, no name, no rupee figure tied to a person. The app imports it at
+# build time, so if this is missing the Vercel build FAILS.
+!src/data/validation.json
+
+# Raw exports and anything derived from them.
+*.csv
+*.xlsx
+*.tsv
+
+# Eval artefacts built from the real book.
+evals/reports/
+evals/upload/
+evals/sweep/
+
+# Early HTML prototypes with real cardholder rows baked into the markup.
+dashboard_preview.html
+.preview_body.html
+*_preview.html
+
+# Secrets and local state.
+.env*
+.tunnel-url

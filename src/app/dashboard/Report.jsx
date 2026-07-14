@@ -99,6 +99,135 @@ function Bar({ label, right, pctv, color, sub }) {
   );
 }
 
+
+/* ═══════════════ MANAGE LINKS ═══════════════
+   Every live link is a door into a bank's customer list with no lock on it. This is the
+   only place those doors can be shut, so it has to answer, at a glance, the questions you
+   would actually ask before shutting one:
+
+     · who did I give it to?
+     · has anybody actually opened it? when?
+     · which report does it point at?
+
+   A revoked link stays on the list, greyed. Vanishing it would leave you wondering whether
+   you revoked it or imagined it. */
+function ManageLinks({ links, busy, revoking, copiedToken, onRevoke, onCopy, onRefresh, onClose }) {
+  const fmtWhen = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+      + ' · ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  if (busy && !links) {
+    return <div style={{ padding: '30px 0', textAlign: 'center', fontSize: 13.5, color: ink(.5) }}>Loading links…</div>;
+  }
+
+  const live = (links || []).filter((l) => !l.revoked);
+  const dead = (links || []).filter((l) => l.revoked);
+
+  if (!links || !links.length) {
+    return (
+      <>
+        <div style={{ padding: '34px 0', textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: ink(.7), marginBottom: 6 }}>No links yet</div>
+          <div style={{ fontSize: 13, color: ink(.45), lineHeight: 1.6 }}>
+            Create one on the <b>New link</b> tab. Anything you issue will appear here, and this
+            is where you take it back.
+          </div>
+        </div>
+        <button onClick={onClose} style={{
+          width: '100%', padding: '11px 18px', borderRadius: 999, border: 'none', cursor: 'pointer',
+          background: ink(.07), color: 'var(--text)', fontSize: 13.5, fontWeight: 600,
+        }}>Close</button>
+      </>
+    );
+  }
+
+  const row = (l) => {
+    const expired = l.expires_at && new Date(l.expires_at) < new Date();
+    const dead_ = l.revoked || expired;
+    const views = Number(l.views || 0);
+    return (
+      <div key={l.token} style={{
+        padding: '13px 14px', borderRadius: 14, marginBottom: 8,
+        background: dead_ ? 'transparent' : ink(.03),
+        border: `1px solid ${dead_ ? ink(.06) : ink(.08)}`,
+        opacity: dead_ ? 0.55 : 1,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: ink(.9), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {l.label || <span style={{ color: ink(.45), fontWeight: 500 }}>(no recipient named)</span>}
+              {l.revoked && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#C9302C' }}>REVOKED</span>}
+              {!l.revoked && expired && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#b7791f' }}>EXPIRED</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: ink(.45), marginTop: 3 }}>
+              {l.report_date || l.reportDate}
+              {' · '}
+              {/* The number that decides whether revoking costs anyone anything. */}
+              {views === 0
+                ? <span style={{ color: ink(.4) }}>never opened</span>
+                : <b style={{ color: '#248A3D' }}>{views} view{views === 1 ? '' : 's'}</b>}
+              {l.last_viewed_at && <> · last {fmtWhen(l.last_viewed_at)}</>}
+              {!l.expires_at && !l.revoked && <> · no expiry</>}
+            </div>
+          </div>
+
+          {!dead_ && (
+            <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+              <button onClick={() => onCopy(l.token)} style={{
+                padding: '7px 13px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                background: copiedToken === l.token ? 'rgba(52,199,89,.16)' : ink(.07),
+                color: copiedToken === l.token ? '#248A3D' : 'var(--text)',
+                fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+              }}>{copiedToken === l.token ? 'Copied ✓' : 'Copy'}</button>
+
+              <button onClick={() => onRevoke(l.token, l.label)} disabled={revoking === l.token} style={{
+                padding: '7px 13px', borderRadius: 999, border: 'none',
+                cursor: revoking === l.token ? 'default' : 'pointer',
+                background: 'rgba(255,59,48,.1)', color: '#FF3B30',
+                fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap',
+                opacity: revoking === l.token ? 0.5 : 1,
+              }}>{revoking === l.token ? 'Revoking…' : 'Revoke'}</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div style={{ maxHeight: 320, overflowY: 'auto', margin: '0 -4px', padding: '0 4px' }}>
+        {live.map(row)}
+        {dead.length > 0 && (
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.35), margin: '14px 0 8px' }}>
+            Revoked &amp; expired
+          </div>
+        )}
+        {dead.map(row)}
+      </div>
+
+      <div style={{ fontSize: 11.5, color: ink(.42), marginTop: 12, lineHeight: 1.6 }}>
+        Revoking is immediate and permanent. Anyone holding the link — including in an email
+        already sent — will see &ldquo;This link is no longer available&rdquo;.
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+        <button onClick={onRefresh} disabled={busy} style={{
+          padding: '11px 18px', borderRadius: 999, border: 'none', cursor: 'pointer',
+          background: ink(.07), color: 'var(--text)', fontSize: 13.5, fontWeight: 600,
+        }}>{busy ? 'Refreshing…' : 'Refresh'}</button>
+        <button onClick={onClose} style={{
+          flex: 1, padding: '11px 18px', borderRadius: 999, border: 'none', cursor: 'pointer',
+          background: '#0071E3', color: '#fff', fontSize: 13.5, fontWeight: 600,
+        }}>Done</button>
+      </div>
+    </>
+  );
+}
+
 /* ============================ report ============================
    One component, two doors.
 
@@ -243,9 +372,63 @@ export default function Report({ shareToken = null }) {
   const [shareErrMsg, setShareErrMsg] = useState('');
   const [copied, setCopied] = useState(false);
 
+  /* ── The link manager ─────────────────────────────────────────────────────────
+     Revocation is the ONLY control on these links. They carry real customer names and
+     have no login in front of them, and (by choice) most of them never expire. A safety
+     net you can only reach by hand-crafting a curl command with a token you have to dig
+     out of an old email is not a safety net — it is a story you tell yourself about one.
+
+     So it lives one click from the Share button, and it shows you what you'd actually
+     need to decide: who it went to, whether anyone opened it, and when. */
+  const [shareTab, setShareTab] = useState('new');    // 'new' | 'manage'
+  const [links, setLinks] = useState(null);           // null = not loaded yet
+  const [linksBusy, setLinksBusy] = useState(false);
+  const [revoking, setRevoking] = useState('');
+  const [copiedToken, setCopiedToken] = useState('');
+
+  const loadLinks = async () => {
+    setLinksBusy(true);
+    try {
+      const res = await fetch('/api/share');
+      const j = await res.json();
+      setLinks(Array.isArray(j.shares) ? j.shares : []);
+    } catch {
+      setLinks([]);
+    } finally {
+      setLinksBusy(false);
+    }
+  };
+
+  const doRevoke = async (token, label) => {
+    /* Confirm, and say the consequence out loud. "Are you sure?" is a speed bump; naming
+       the person whose access you are about to cut is a decision. */
+    const who = label ? `the link issued to "${label}"` : 'this link';
+    if (!window.confirm(`Revoke ${who}?\n\nIt stops working immediately. Anyone holding it — including in an email already sent — will see "This link is no longer available". This cannot be undone; you would have to issue a new one.`)) return;
+    setRevoking(token);
+    try {
+      const res = await fetch(`/api/share?token=${encodeURIComponent(token)}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Revoke failed');
+      // Reflect it locally rather than refetching — instant, and it cannot show a stale row.
+      setLinks((prev) => (prev || []).map((l) => (l.token === token ? { ...l, revoked: true } : l)));
+    } catch (e) {
+      window.alert(`Could not revoke the link.\n\n${e.message}`);
+    } finally {
+      setRevoking('');
+    }
+  };
+
+  const copyLink = async (token) => {
+    const base = (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/+$/, '') || window.location.origin;
+    try {
+      await navigator.clipboard.writeText(`${base}/r/${token}`);
+      setCopiedToken(token);
+      setTimeout(() => setCopiedToken(''), 2000);
+    } catch { /* clipboard blocked */ }
+  };
+
   const openShare = () => {
     setShareRes(null); setShareErrMsg(''); setCopied(false);
-    setShareWho(''); setShareDays(0); setShareOpen(true);
+    setShareWho(''); setShareDays(0); setShareTab('new'); setLinks(null); setShareOpen(true);
   };
 
   const makeShare = async () => {
@@ -541,17 +724,54 @@ export default function Report({ shareToken = null }) {
             ...GLASS, borderRadius: 26, padding: '28px 30px', width: 'min(560px, 100%)',
             animation: 'fadeUp .35s cubic-bezier(.32,.72,0,1) both',
           }}>
-            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-.015em', marginBottom: 5 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-.015em', marginBottom: 14 }}>
               Share this report
             </div>
-            <div style={{ fontSize: 13, color: ink(.55), lineHeight: 1.6, marginBottom: 18 }}>
-              A private, read-only link to <b style={{ color: ink(.8) }}>{data.meta.reportDate}</b>. No login, no password —
-              whoever holds the URL can open it. It shows the full report, <b style={{ color: ink(.8) }}>real customer names
-              included</b>. Revoke it the moment it has done its job.
+
+            {/* Two tabs. "Manage" is not an afterthought — revocation is the only control
+                these links have, so it lives one click away, not in a curl command. */}
+            <div style={{ display: 'flex', gap: 6, padding: 4, borderRadius: 12, background: ink(.05), marginBottom: 18 }}>
+              {[
+                { id: 'new', label: 'New link' },
+                { id: 'manage', label: 'Manage links' },
+              ].map((tb) => (
+                <button key={tb.id} onClick={() => { setShareTab(tb.id); if (tb.id === 'manage' && links === null) loadLinks(); }}
+                  style={{
+                    flex: 1, padding: '9px 12px', borderRadius: 9, border: 'none', cursor: 'pointer',
+                    fontSize: 13, fontWeight: 600,
+                    background: shareTab === tb.id ? 'var(--card, #fff)' : 'transparent',
+                    color: shareTab === tb.id ? 'var(--text)' : ink(.5),
+                    boxShadow: shareTab === tb.id ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
+                  }}>
+                  {tb.label}
+                  {tb.id === 'manage' && links && links.filter((l) => !l.revoked).length > 0 && (
+                    <span style={{
+                      marginLeft: 7, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999,
+                      background: 'rgba(52,199,89,.16)', color: '#248A3D',
+                    }}>{links.filter((l) => !l.revoked).length}</span>
+                  )}
+                </button>
+              ))}
             </div>
 
-            {!shareRes ? (
+            {shareTab === 'manage' ? (
+              <ManageLinks
+                links={links}
+                busy={linksBusy}
+                revoking={revoking}
+                copiedToken={copiedToken}
+                onRevoke={doRevoke}
+                onCopy={copyLink}
+                onRefresh={loadLinks}
+                onClose={() => setShareOpen(false)}
+              />
+            ) : !shareRes ? (
               <>
+                <div style={{ fontSize: 13, color: ink(.55), lineHeight: 1.6, marginBottom: 18 }}>
+                  A private, read-only link to <b style={{ color: ink(.8) }}>{data.meta.reportDate}</b>. No login, no
+                  password — whoever holds the URL can open it. It shows the full report,{' '}
+                  <b style={{ color: ink(.8) }}>real customer names included</b>. Revoke it the moment it has done its job.
+                </div>
                 <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.45) }}>
                   Who is it for?
                 </label>
