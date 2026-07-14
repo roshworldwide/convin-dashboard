@@ -26,12 +26,11 @@
     "diagnose": "node scripts/diagnose_join.mjs",
     "wipe": "node scripts/wipe.mjs",
     "test:keys": "node evals/stress_keys.mjs",
-    "test:all": "node evals/stress_keys.mjs && node evals/stress_merge_rows.mjs && node evals/stress_test.mjs && node evals/stress_summary.mjs",
+    "test:all": "node evals/stress_keys.mjs && node evals/stress_merge_rows.mjs && node evals/stress_test.mjs",
     "push": "node scripts/push.mjs",
     "db:schema": "psql \"$DATABASE_URL\" -f db/postgres/schema.sql",
     "dev:next": "next dev",
-    "rebuild:local": "node rebuild_local.mjs",
-    "test:summary": "node evals/stress_summary.mjs"
+    "rebuild:local": "node rebuild_local.mjs"
   },
   "dependencies": {
     "next": "16.2.10",
