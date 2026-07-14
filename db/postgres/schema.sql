@@ -96,3 +96,13 @@ CREATE TABLE IF NOT EXISTS share_links (
   last_viewed_at  timestamptz
 );
 CREATE INDEX IF NOT EXISTS idx_share_batch ON share_links (batch_id);
+
+-- What the link grants access to.
+--   'batch' — ONE report (the original behaviour)
+--   'date'  — every report filed under report_date: Day Total, Day 1, Day 2 …
+--
+-- Defaults to 'batch' ON PURPOSE. Links already issued were cut under the old promise
+-- of "one report and nothing else"; widening them retroactively, in a migration, with
+-- no way for the issuer to know, would be handing a recipient access they were never
+-- granted. Old links stay narrow. New links are 'date'.
+ALTER TABLE share_links ADD COLUMN IF NOT EXISTS scope text NOT NULL DEFAULT 'batch';

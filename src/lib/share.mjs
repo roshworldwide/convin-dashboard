@@ -28,8 +28,16 @@
  *              instantly — precisely the thing a PDF can never do. Expiry is optional
  *              (0 days = never); revocation is not optional, it is the whole safety net.
  *
- *   SCOPED     To ONE report. Not to the app. The holder cannot navigate to another
- *              date, cannot upload, cannot open the Account Explorer, cannot log in.
+ *   SCOPED     To ONE REPORT DATE. The holder sees every report filed under that date
+ *              — Day Total, Day 1, Day 2 — and nothing else. They cannot navigate to
+ *              another date, cannot upload, cannot open the Account Explorer, cannot
+ *              log in.
+ *
+ *              The tab list is built SERVER-SIDE from the date the link was cut for.
+ *              The client sends a batch id; the server checks it against that list and
+ *              404s otherwise. If the allowed set were ever taken from the request, the
+ *              holder would change one query parameter and read every date in the book.
+ *              That is the whole security model of this feature, in one sentence.
  *
  *   AUDITED    View count and last-viewed timestamp. When RBL asks "who saw this",
  *              you have an answer.
@@ -100,15 +108,17 @@ async function writeLocal(list) {
  * default — but a report an exec cannot open next month is a report they stop opening.
  * So it is allowed, and revocation is the control that replaces it. Use it.
  */
-export async function createShare({ batchId, reportDate, label, days = 0 }) {
+export async function createShare({ batchId, reportDate, label, days = 0, scope = 'date' }) {
+  const sc = scope === 'batch' ? 'batch' : 'date';
   const token = newToken();
   const now = new Date();
   const n = Number(days) || 0;
   const expiresAt = n > 0 ? new Date(now.getTime() + n * 86400_000) : null;
   const row = {
     token,
-    batch_id: batchId,
+    batch_id: batchId,        // the tab the link OPENS on; not the limit of what it grants
     report_date: reportDate,
+    scope: sc,
     label: String(label || '').slice(0, 80),
     created_at: now.toISOString(),
     expires_at: expiresAt ? expiresAt.toISOString() : null,
@@ -120,9 +130,9 @@ export async function createShare({ batchId, reportDate, label, days = 0 }) {
   if (hasDb()) {
     const pool = await getPool();
     await pool.query(
-      `INSERT INTO share_links (token, batch_id, report_date, label, expires_at)
-       VALUES ($1,$2,$3,$4,$5)`,
-      [token, batchId, reportDate, row.label, expiresAt],
+      `INSERT INTO share_links (token, batch_id, report_date, label, expires_at, scope)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [token, batchId, reportDate, row.label, expiresAt, sc],
     );
   } else {
     const list = await readLocal();
@@ -145,7 +155,8 @@ export async function resolveShare(token) {
   if (hasDb()) {
     const pool = await getPool();
     const { rows } = await pool.query(
-      `SELECT token, batch_id, report_date, label, expires_at, revoked
+      `SELECT token, batch_id, to_char(report_date,'YYYY-MM-DD') AS report_date,
+              label, expires_at, revoked, scope
        FROM share_links WHERE token = $1`, [t],
     );
     const r = rows[0];
@@ -154,7 +165,7 @@ export async function resolveShare(token) {
     // Fire-and-forget audit. A failure to write the counter must never block a view.
     pool.query('UPDATE share_links SET views = views + 1, last_viewed_at = now() WHERE token = $1', [t])
       .catch(() => {});
-    return { token: r.token, batchId: r.batch_id, reportDate: r.report_date, label: r.label, expiresAt: r.expires_at };
+    return { token: r.token, batchId: r.batch_id, reportDate: r.report_date, label: r.label, expiresAt: r.expires_at, scope: r.scope || 'batch' };
   }
 
   const list = await readLocal();
@@ -164,17 +175,20 @@ export async function resolveShare(token) {
   r.views = (r.views || 0) + 1;
   r.last_viewed_at = new Date().toISOString();
   await writeLocal(list);
-  return { token: r.token, batchId: r.batch_id, reportDate: r.report_date, label: r.label, expiresAt: r.expires_at };
+  // Links written before scope existed are 'batch' — they were issued under a narrower
+  // promise and must not silently widen.
+  return { token: r.token, batchId: r.batch_id, reportDate: r.report_date, label: r.label, expiresAt: r.expires_at, scope: r.scope || 'batch' };
 }
 
 export async function listShares() {
   if (hasDb()) {
     const pool = await getPool();
     const { rows } = await pool.query(
-      `SELECT token, batch_id, report_date, label, created_at, expires_at, revoked, views, last_viewed_at
+      `SELECT token, batch_id, to_char(report_date,'YYYY-MM-DD') AS report_date, label,
+              created_at, expires_at, revoked, views, last_viewed_at, scope
        FROM share_links ORDER BY created_at DESC LIMIT 100`,
     );
-    return rows.map((r) => ({ ...r, batchId: r.batch_id, reportDate: r.report_date }));
+    return rows.map((r) => ({ ...r, batchId: r.batch_id, reportDate: r.report_date, scope: r.scope || 'batch' }));
   }
   return readLocal();
 }

@@ -307,6 +307,7 @@ export default function Report({ shareToken = null }) {
   const [dateIdx, setDateIdx] = useState(0);
   const [batchId, setBatchId] = useState(null);
   const [switching, setSwitching] = useState(false);
+  const [shareTabs, setShareTabs] = useState([]);
   const [theme, setTheme] = useState('light');
   const [name, setName] = useState('');
 
@@ -330,10 +331,31 @@ export default function Report({ shareToken = null }) {
       return;
     }
     const j = await res.json();
-    setShare({ label: j.label, expiresAt: j.expiresAt });
+    setShare({ label: j.label, expiresAt: j.expiresAt, display: j.display, date: j.date });
+    /* The tabs come from the SERVER, built from the date this link was cut for. The
+       client never decides what it is allowed to see — it renders what it was given, and
+       every tab click is re-checked server-side. A legacy batch-scoped link sends [] and
+       simply gets no tab bar. */
+    setShareTabs(Array.isArray(j.tabs) ? j.tabs : []);
+    setBatchId(j.batchId || null);
     setData(j.payload);
     setAuthed(true);
     setLoading(false);
+  };
+
+  /* Switch tabs inside a shared link. Goes back through the token — there is no session
+     here, and /api/batch would (correctly) refuse. The server re-validates the batch id
+     against the link's date on every single request; it does not trust that we only ask
+     for tabs it previously offered us. */
+  const selectShareBatch = async (id) => {
+    if (id === batchId) return;
+    setSwitching(true);
+    try {
+      const r = await fetch(`/api/share/${shareToken}?batch=${encodeURIComponent(id)}`);
+      if (!r.ok) return;                      // out of scope, revoked, gone — say nothing
+      const j = await r.json();
+      setData(j.payload); setBatchId(j.batchId);
+    } catch { /* leave the current report on screen */ } finally { setSwitching(false); }
   };
 
   const boot = async () => {
@@ -825,10 +847,14 @@ export default function Report({ shareToken = null }) {
               />
             ) : !shareRes ? (
               <>
+                {/* Say exactly what the link grants. A recipient who discovers extra tabs
+                    you did not know you sent is a conversation you do not want to have. */}
                 <div style={{ fontSize: 13, color: txt(.55), lineHeight: 1.6, marginBottom: 18 }}>
-                  A private, read-only link to <b style={{ color: txt(.8) }}>{data.meta.reportDate}</b>. No login, no
-                  password — whoever holds the URL can open it. It shows the full report,{' '}
-                  <b style={{ color: txt(.8) }}>real customer names included</b>. Revoke it the moment it has done its job.
+                  A private, read-only link to <b style={{ color: txt(.8) }}>{data.meta.reportDate}</b> — the whole date:{' '}
+                  <b style={{ color: txt(.8) }}>Day Total and every Day</b> filed under it. No login, no password —
+                  whoever holds the URL can open it, and it shows the full report with{' '}
+                  <b style={{ color: txt(.8) }}>real customer names</b>. They cannot reach any other date, upload, or
+                  open the Account Explorer. Revoke it the moment it has done its job.
                 </div>
                 <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.45) }}>
                   Who is it for?
@@ -1058,6 +1084,38 @@ export default function Report({ shareToken = null }) {
             </div>
           );
         })()}
+
+        {/* ===== Shared link: the tabs for THIS DATE, and nothing else =====
+            The recipient can move between Day Total, Day 1, Day 2… for the one date the
+            link was cut for. There is NO date navigator — that is what keeps the link
+            scoped, and offering arrows that cannot work would be worse than offering
+            none. The report date is shown as a fixed label so they always know what
+            they are looking at.
+
+            The tab list came from the server. Every click goes back through the token and
+            is re-validated against the link's own date — the browser is not trusted to
+            only ask for tabs it was offered. Hiding a button is not access control.
+
+            Legacy batch-scoped links send no tabs, and get no tab bar. */}
+        {shareToken && shareTabs.length > 1 && (
+          <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', padding: '28px 0 2px', animation: 'fadeUp .6s cubic-bezier(.32,.72,0,1) both' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, ...GLASS, borderRadius: 999, padding: '9px 18px' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: txt(.45) }}>Report date</span>
+              <span style={{ fontSize: 14, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{share?.display || data.meta.reportDate}</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, ...GLASS, borderRadius: 999, padding: 5, opacity: switching ? 0.55 : 1, transition: 'opacity .2s' }}>
+              {shareTabs.map((tb) => {
+                const on = tb.id === batchId;
+                return (
+                  <button key={tb.id} onClick={() => selectShareBatch(tb.id)} style={{ border: 'none', cursor: on ? 'default' : 'pointer', borderRadius: 999, padding: '8px 15px', fontSize: 13, fontWeight: 600, color: on ? '#fff' : txt(.62), background: on ? '#0071E3' : 'transparent', transition: 'background .25s, color .25s', whiteSpace: 'nowrap' }}>
+                    {tb.label}
+                    {tb.meta && <span style={{ fontWeight: 500, opacity: on ? 0.8 : 0.55, marginLeft: 7, fontSize: 11.5 }}>{tb.meta}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ═══════════════════════ PRINT COVER ═══════════════════════
             Invisible on screen; the first page of the PDF. A report a bank will actually
