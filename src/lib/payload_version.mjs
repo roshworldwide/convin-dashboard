@@ -26,5 +26,7 @@
  *     + totals.statesCovered excludes the "Unspecified" bucket
  * v7  meta.cycFile — the CYC book each report was computed from, printed on the
  *     cover and SURVIVES sanitizeForShare (unlike meta.sources, which does not)
+ * v8  funnel stages 2 and 3 renamed "Total Leads Attempted" / "Total Leads
+ *     Connected" — they count ACCOUNTS, not calls, and the old labels said calls
  */
-export const PAYLOAD_VERSION = 7;
+export const PAYLOAD_VERSION = 8;

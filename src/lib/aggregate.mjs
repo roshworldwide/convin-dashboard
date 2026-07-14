@@ -494,8 +494,11 @@ export class Aggregator {
     });
     const funnel = [
       stage(1, 'Total Accounts', N, resolved, 'journey', 'Every account in RBL\'s CYC book'),
-      stage(2, 'AI Calls Attempted', this.fAttempted, this.rAttempted, 'journey', 'The AI dialled these'),
-      stage(3, 'AI Calls Connected', this.fConnected, this.rConnected, 'journey', 'A human actually picked up'),
+      /* "Leads", not "Calls" — because these are ACCOUNT counts (7,042 and 3,429), not
+         call counts (39,905 and 6,710). The old labels said Calls while the bars showed
+         leads, which invited an exec to read the funnel as a dialler report. */
+      stage(2, 'Total Leads Attempted', this.fAttempted, this.rAttempted, 'journey', 'The AI dialled these'),
+      stage(3, 'Total Leads Connected', this.fConnected, this.rConnected, 'journey', 'A human actually picked up'),
       stage(4, 'Promise to Pay Later', this.fPtpLater, this.rPtpLater, 'outcome', 'Disposition L2 — the customer committed to pay later'),
       stage(5, 'Paid', this.fPaidL2, this.rPaidL2, 'outcome', 'Disposition L2 — the customer said the payment was made'),
       stage(6, 'Resolved Customers', resolved, resolved, 'outcome', 'RBL\'s own status file — the only outcome we did not write'),

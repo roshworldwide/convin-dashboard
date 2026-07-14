@@ -91,11 +91,26 @@ const INVARIANTS = [
     const sum = p.agg.duration.reduce((a, d) => a + d.n, 0);
     return sum === want ? null : `duration buckets hold ${sum} of ${want}`;
   }],
+  /* Keyed on the stage NUMBER, never the display label.
+     This check used to look up f['AI Attempted'] while the stage was actually called
+     'AI Calls Attempted' — so both sides were undefined, `undefined > undefined` is
+     false, and the invariant passed every run without testing anything at all. It sat
+     there green for the entire life of the project. A label is a thing a client asks
+     you to change on a Friday; it must never be load-bearing. */
   ['funnel never widens (connected <= attempted <= total)', (p) => {
-    const f = Object.fromEntries(p.agg.funnel.map((x) => [x.stage, x.value]));
-    if (f['AI Attempted'] > f['Total Accounts']) return `attempted ${f['AI Attempted']} > total ${f['Total Accounts']}`;
-    if (f['AI Connected'] > f['AI Attempted']) return `connected ${f['AI Connected']} > attempted ${f['AI Attempted']}`;
+    if (!p.agg.funnel.length) return null;
+    const f = Object.fromEntries(p.agg.funnel.map((x) => [x.n, x]));
+    const total = f[1], attempted = f[2], connected = f[3];
+    if (!total || !attempted || !connected) return 'funnel is missing one of stages 1-3';
+    if (attempted.value > total.value) return `attempted ${attempted.value} > total ${total.value}`;
+    if (connected.value > attempted.value) return `connected ${connected.value} > attempted ${attempted.value}`;
     return null;
+  }],
+  ['the journey stages are the ones we think they are', (p) => {
+    if (!p.agg.funnel.length) return null;
+    const j = p.agg.funnel.filter((x) => x.kind === 'journey').map((x) => x.n);
+    return JSON.stringify(j) === '[1,2,3]' ? null
+      : `journey stages are ${JSON.stringify(j)}, expected [1,2,3] — a stage changed kind and the widening check now guards the wrong bars`;
   }],
   ['propensity tiers cover the whole open book — or admit they are not ranked', (p) => {
     const opp = p.intel.opportunity;
