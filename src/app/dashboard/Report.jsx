@@ -23,7 +23,47 @@ const FW = 560;
    the stage ledger. */
 const FUNNEL_PAD = 84;
 const SEG_COLOR = { red: '#FF3B30', amber: '#FF9500', green: '#34C759', yellow: '#FFCC00', blue: '#0071E3' };
+/* ── ink() vs txt() ────────────────────────────────────────────────────────────
+ *
+ * ink(a) is the raw colour. It is used for TWO completely different jobs, and that is
+ * why the labels became unreadable:
+ *
+ *   hairlines, dividers, fills   →  alpha .03 – .22   (must stay faint)
+ *   TEXT                         →  alpha .35 – .92   (must be legible)
+ *
+ * The text end had drifted far too light. Seventy-odd labels sat at .4 – .5, which on
+ * white renders around #A8A8A9 — a contrast ratio of roughly 2.5:1, against the 4.5:1
+ * that WCAG AA requires for body text. Fine on a Retina display in a dark room;
+ * genuinely unreadable on a projector, on a printout, or to anyone over forty. This is
+ * going in front of a bank's exec committee.
+ *
+ * So text gets its own function, which remaps the alpha onto a legible range while
+ * preserving the ORDER — a caption is still quieter than a heading, it is simply no
+ * longer invisible:
+ *
+ *      txt(.40)  →  .75   (#555 on white, 7.4:1 — was 2.5:1)
+ *      txt(.45)  →  .78
+ *      txt(.50)  →  .80
+ *      txt(.72)  →  .91
+ *
+ * Nothing below TEXT_FLOOR is reachable, so no label can ever go faint again — the
+ * floor is enforced here, once, rather than trusted to 130 call sites.
+ *
+ * A note on "Black Titanium": it is a physical iPhone finish, not a UI colour. As hex
+ * it is ~#3C3C3D, which is LIGHTER than the #1D1D1F below — using it for text would
+ * reduce contrast, which is the opposite of the goal. The base stays Apple's true
+ * label black; --ink in globals.css is the one knob if that ever needs revisiting.
+ * ───────────────────────────────────────────────────────────────────────────── */
+const TEXT_FLOOR = 0.66;                       // ≈ 5.6:1 on white — WCAG AA for body text
+const textAlpha = (a) => {
+  if (a >= 0.92) return 1;
+  const t = Math.min(1, Math.max(0, (a - 0.2) / (0.92 - 0.2)));
+  return +(TEXT_FLOOR + t * (1 - TEXT_FLOOR)).toFixed(3);
+};
+/** Hairlines, dividers, fills. Unchanged — darkening these would wreck the design. */
 const ink = (a) => `rgba(var(--ink,29,29,31),${a})`;
+/** TEXT. Same colour, legible alpha. Use this anywhere a human has to read words. */
+const txt = (a) => `rgba(var(--ink,29,29,31),${textAlpha(a)})`;
 
 /* Duration × L2 heat table. */
 const mmss = (s) => {
@@ -39,7 +79,7 @@ const heatAlpha = (p) => {
 const l2Th = (align, w) => ({
   padding: '9px 10px', textAlign: align, width: w, fontSize: 11,
   fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em',
-  color: ink(.45), whiteSpace: 'nowrap',
+  color: txt(.45), whiteSpace: 'nowrap',
 });
 const arrowBtn = (disabled) => ({ border: 'none', background: disabled ? 'transparent' : ink(.05), color: disabled ? ink(.2) : 'var(--text,#1D1D1F)', cursor: disabled ? 'default' : 'pointer', width: 30, height: 30, borderRadius: '50%', fontSize: 18, lineHeight: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' });
 
@@ -99,7 +139,7 @@ function Title({ t, s }) {
   return (
     <>
       <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text,#1D1D1F)' }}>{t}</div>
-      {s && <div style={{ fontSize: 12.5, color: ink(.48), marginTop: 2, marginBottom: 18 }}>{s}</div>}
+      {s && <div style={{ fontSize: 12.5, color: txt(.48), marginTop: 2, marginBottom: 18 }}>{s}</div>}
     </>
   );
 }
@@ -107,13 +147,13 @@ function Bar({ label, right, pctv, color, sub }) {
   return (
     <div style={{ marginBottom: 13 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-        <span style={{ color: ink(.68) }}>{label}</span>
+        <span style={{ color: txt(.68) }}>{label}</span>
         <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: 'var(--text,#1D1D1F)' }}>{right}</span>
       </div>
       <div style={{ height: 10, borderRadius: 6, background: ink(.07), overflow: 'hidden' }}>
         <div style={{ height: '100%', borderRadius: 6, width: `${Math.max(1.5, pctv)}%`, background: color, transition: 'width 1.1s cubic-bezier(.32,.72,0,1)' }} />
       </div>
-      {sub && <div style={{ fontSize: 11.5, color: ink(.42), marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11.5, color: txt(.42), marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -139,7 +179,7 @@ function ManageLinks({ links, busy, revoking, copiedToken, onRevoke, onCopy, onR
   };
 
   if (busy && !links) {
-    return <div style={{ padding: '30px 0', textAlign: 'center', fontSize: 13.5, color: ink(.5) }}>Loading links…</div>;
+    return <div style={{ padding: '30px 0', textAlign: 'center', fontSize: 13.5, color: txt(.5) }}>Loading links…</div>;
   }
 
   const live = (links || []).filter((l) => !l.revoked);
@@ -149,8 +189,8 @@ function ManageLinks({ links, busy, revoking, copiedToken, onRevoke, onCopy, onR
     return (
       <>
         <div style={{ padding: '34px 0', textAlign: 'center' }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: ink(.7), marginBottom: 6 }}>No links yet</div>
-          <div style={{ fontSize: 13, color: ink(.45), lineHeight: 1.6 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: txt(.7), marginBottom: 6 }}>No links yet</div>
+          <div style={{ fontSize: 13, color: txt(.45), lineHeight: 1.6 }}>
             Create one on the <b>New link</b> tab. Anything you issue will appear here, and this
             is where you take it back.
           </div>
@@ -176,17 +216,17 @@ function ManageLinks({ links, busy, revoking, copiedToken, onRevoke, onCopy, onR
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: ink(.9), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {l.label || <span style={{ color: ink(.45), fontWeight: 500 }}>(no recipient named)</span>}
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: txt(.9), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {l.label || <span style={{ color: txt(.45), fontWeight: 500 }}>(no recipient named)</span>}
               {l.revoked && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#C9302C' }}>REVOKED</span>}
               {!l.revoked && expired && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#b7791f' }}>EXPIRED</span>}
             </div>
-            <div style={{ fontSize: 11.5, color: ink(.45), marginTop: 3 }}>
+            <div style={{ fontSize: 11.5, color: txt(.45), marginTop: 3 }}>
               {l.report_date || l.reportDate}
               {' · '}
               {/* The number that decides whether revoking costs anyone anything. */}
               {views === 0
-                ? <span style={{ color: ink(.4) }}>never opened</span>
+                ? <span style={{ color: txt(.4) }}>never opened</span>
                 : <b style={{ color: '#248A3D' }}>{views} view{views === 1 ? '' : 's'}</b>}
               {l.last_viewed_at && <> · last {fmtWhen(l.last_viewed_at)}</>}
               {!l.expires_at && !l.revoked && <> · no expiry</>}
@@ -221,14 +261,14 @@ function ManageLinks({ links, busy, revoking, copiedToken, onRevoke, onCopy, onR
       <div style={{ maxHeight: 320, overflowY: 'auto', margin: '0 -4px', padding: '0 4px' }}>
         {live.map(row)}
         {dead.length > 0 && (
-          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.35), margin: '14px 0 8px' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.35), margin: '14px 0 8px' }}>
             Revoked &amp; expired
           </div>
         )}
         {dead.map(row)}
       </div>
 
-      <div style={{ fontSize: 11.5, color: ink(.42), marginTop: 12, lineHeight: 1.6 }}>
+      <div style={{ fontSize: 11.5, color: txt(.42), marginTop: 12, lineHeight: 1.6 }}>
         Revoking is immediate and permanent. Anyone holding the link — including in an email
         already sent — will see &ldquo;This link is no longer available&rdquo;.
       </div>
@@ -263,14 +303,14 @@ function ManageLinks({ links, busy, revoking, copiedToken, onRevoke, onCopy, onR
 function SummaryView({ s }) {
   if (!s) {
     return (
-      <div style={{ padding: '80px 0', textAlign: 'center', color: ink(.45), fontSize: 14 }}>
+      <div style={{ padding: '80px 0', textAlign: 'center', color: txt(.45), fontSize: 14 }}>
         Building the campaign summary…
       </div>
     );
   }
   if (s.error || !s.campaign) {
     return (
-      <div style={{ padding: '60px 0', textAlign: 'center', color: ink(.5), fontSize: 14 }}>
+      <div style={{ padding: '60px 0', textAlign: 'center', color: txt(.5), fontSize: 14 }}>
         {s.error || 'No reports have been uploaded yet, so there is nothing to summarise.'}
       </div>
     );
@@ -298,7 +338,7 @@ function SummaryView({ s }) {
         <h1 className="print-solid-text" style={{ fontSize: 48, lineHeight: 1.06, fontWeight: 700, letterSpacing: '-.03em', margin: '0 0 16px', maxWidth: 900, background: 'linear-gradient(120deg,#34C759 0%,#0071E3 55%,#5856D6 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
           {fmtCr(t.recovered)} recovered across {s.trend.length === 1 ? 'the campaign' : `${s.trend.length} reports`}.
         </h1>
-        <p style={{ fontSize: 17, lineHeight: 1.55, color: ink(.6), maxWidth: 760, margin: 0 }}>
+        <p style={{ fontSize: 17, lineHeight: 1.55, color: txt(.6), maxWidth: 760, margin: 0 }}>
           {fmtInt(t.accounts)} accounts holding {fmtCr(t.sumOut)} — {fmtInt(t.resolved)} resolved ({pct(t.resolutionRatePct)}),
           {' '}{fmtCr(t.outstandingPending)} still open across {fmtInt(t.unresolved)} accounts.
           {multi && (
@@ -314,9 +354,9 @@ function SummaryView({ s }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 16 }}>
         {head.map((k, i) => (
           <Card key={i} span={12} style={{ padding: '18px 20px' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: ink(.5), marginBottom: 8 }}>{k.l}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: txt(.5), marginBottom: 8 }}>{k.l}</div>
             <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-.02em', color: k.c, fontVariantNumeric: 'tabular-nums' }}>{k.v}</div>
-            <div style={{ fontSize: 12, color: ink(.45), marginTop: 4 }}>{k.s}</div>
+            <div style={{ fontSize: 12, color: txt(.45), marginTop: 4 }}>{k.s}</div>
           </Card>
         ))}
       </div>
@@ -333,7 +373,7 @@ function SummaryView({ s }) {
               { l: 'Resolution rate', v: `${m.resolutionPts >= 0 ? '+' : '−'}${Math.abs(m.resolutionPts).toFixed(1)} pts`, c: m.resolutionPts >= 0 ? C.green : '#C9302C' },
             ].map((x, i) => (
               <div key={i}>
-                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: ink(.45), marginBottom: 6 }}>{x.l}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.05em', textTransform: 'uppercase', color: txt(.45), marginBottom: 6 }}>{x.l}</div>
                 <div style={{ fontSize: 26, fontWeight: 700, color: x.c, fontVariantNumeric: 'tabular-nums' }}>{x.v}</div>
               </div>
             ))}
@@ -350,7 +390,7 @@ function SummaryView({ s }) {
               <thead>
                 <tr>
                   {['Report date', 'Accounts', 'Outstanding', 'Recovered', 'Resolved', 'Resolution', 'Change'].map((h, i) => (
-                    <th key={h} style={{ textAlign: i ? 'right' : 'left', padding: '9px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.45), borderBottom: `1px solid ${ink(.1)}`, whiteSpace: 'nowrap' }}>{h}</th>
+                    <th key={h} style={{ textAlign: i ? 'right' : 'left', padding: '9px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.45), borderBottom: `1px solid ${ink(.1)}`, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -371,7 +411,7 @@ function SummaryView({ s }) {
               </tbody>
             </table>
           </div>
-          <div style={{ fontSize: 11.5, color: ink(.42), marginTop: 10, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 11.5, color: txt(.42), marginTop: 10, lineHeight: 1.6 }}>
             <b>These rows do not add up, and must not be added up.</b> Every date re-reads the same book against a later
             status file, so a customer who paid on the 4th is still resolved on the 8th. The headline above is the{' '}
             <b>union</b> of all dates — each account counted once, at its most recent outcome.
@@ -395,7 +435,7 @@ function SummaryView({ s }) {
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 3 }}>{f.label}</div>
-                  <div style={{ fontSize: 12.5, color: ink(.62), lineHeight: 1.6 }}>{f.detail}</div>
+                  <div style={{ fontSize: 12.5, color: txt(.62), lineHeight: 1.6 }}>{f.detail}</div>
                 </div>
               </div>
             ))}
@@ -410,23 +450,23 @@ function SummaryView({ s }) {
           <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.02em', color: C.orange, fontVariantNumeric: 'tabular-nums' }}>
             {fmtCr(s.openAmount)}
           </div>
-          <div style={{ fontSize: 13.5, color: ink(.55) }}>still outstanding across {fmtInt(s.openAccounts)} open accounts</div>
+          <div style={{ fontSize: 13.5, color: txt(.55) }}>still outstanding across {fmtInt(s.openAccounts)} open accounts</div>
         </div>
         {s.actions.map((a, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '13px 0', borderTop: `1px solid ${ink(.08)}` }}>
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 600 }}>{a.label}</div>
-              <div style={{ fontSize: 12, color: ink(.45), marginTop: 2 }}>{a.note} · {fmtInt(a.count)} accounts</div>
+              <div style={{ fontSize: 12, color: txt(.45), marginTop: 2 }}>{a.note} · {fmtInt(a.count)} accounts</div>
             </div>
             <div style={{ fontSize: 17, fontWeight: 700, color: C.indigo, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{fmtCr(a.amount)}</div>
           </div>
         ))}
         {!s.actions.length && (
-          <div style={{ fontSize: 13, color: ink(.45), paddingTop: 8 }}>Nothing left in the open book to prioritise.</div>
+          <div style={{ fontSize: 13, color: txt(.45), paddingTop: 8 }}>Nothing left in the open book to prioritise.</div>
         )}
       </Card>
 
-      <div style={{ textAlign: 'center', fontSize: 12, color: ink(.4), marginTop: 40, lineHeight: 1.7 }}>
+      <div style={{ textAlign: 'center', fontSize: 12, color: txt(.4), marginTop: 40, lineHeight: 1.7 }}>
         Convin × RBL Bank · Campaign Summary · {s.trend.length} report{s.trend.length === 1 ? '' : 's'} ·
         {' '}Accounts unioned across every date — counted once, at their most recent outcome.
       </div>
@@ -742,7 +782,7 @@ export default function Report({ shareToken = null }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ width: 46, height: 46, border: '3px solid rgba(0,113,227,.15)', borderTopColor: '#0071E3', borderRadius: 999, animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
-          <div style={{ fontSize: 15, fontWeight: 500, color: ink(.6) }}>Loading Recovery Intelligence…</div>
+          <div style={{ fontSize: 15, fontWeight: 500, color: txt(.6) }}>Loading Recovery Intelligence…</div>
         </div>
       </div>
     );
@@ -755,7 +795,7 @@ export default function Report({ shareToken = null }) {
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, color: 'var(--text)' }}>
         <div style={{ ...GLASS, borderRadius: 28, padding: '38px 42px', textAlign: 'center', maxWidth: 460 }}>
           <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>This link is no longer available</div>
-          <div style={{ fontSize: 13.5, color: ink(.55), lineHeight: 1.6 }}>
+          <div style={{ fontSize: 13.5, color: txt(.55), lineHeight: 1.6 }}>
             {shareErr || 'It may have expired or been withdrawn. Ask whoever sent it for a fresh link.'}
           </div>
         </div>
@@ -768,7 +808,7 @@ export default function Report({ shareToken = null }) {
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, color: 'var(--text)' }}>
         <div style={{ ...GLASS, borderRadius: 28, padding: 34, textAlign: 'center' }}>
           <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Session expired</div>
-          <div style={{ fontSize: 13.5, color: ink(.55), marginBottom: 20 }}>Please sign in to view the dashboard.</div>
+          <div style={{ fontSize: 13.5, color: txt(.55), marginBottom: 20 }}>Please sign in to view the dashboard.</div>
           <Link href="/" style={{ display: 'inline-block', padding: '12px 24px', fontSize: 14, fontWeight: 600, borderRadius: 999, background: '#0071E3', color: '#fff', textDecoration: 'none' }}>Go to sign in</Link>
         </div>
       </div>
@@ -1003,12 +1043,12 @@ export default function Report({ shareToken = null }) {
               />
             ) : !shareRes ? (
               <>
-                <div style={{ fontSize: 13, color: ink(.55), lineHeight: 1.6, marginBottom: 18 }}>
-                  A private, read-only link to <b style={{ color: ink(.8) }}>{data.meta.reportDate}</b>. No login, no
+                <div style={{ fontSize: 13, color: txt(.55), lineHeight: 1.6, marginBottom: 18 }}>
+                  A private, read-only link to <b style={{ color: txt(.8) }}>{data.meta.reportDate}</b>. No login, no
                   password — whoever holds the URL can open it. It shows the full report,{' '}
-                  <b style={{ color: ink(.8) }}>real customer names included</b>. Revoke it the moment it has done its job.
+                  <b style={{ color: txt(.8) }}>real customer names included</b>. Revoke it the moment it has done its job.
                 </div>
-                <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.45) }}>
+                <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.45) }}>
                   Who is it for?
                 </label>
                 <input
@@ -1022,12 +1062,12 @@ export default function Report({ shareToken = null }) {
                     border: `1px solid ${ink(.12)}`, background: ink(.03), color: 'var(--text)', outline: 'none',
                   }}
                 />
-                <div style={{ fontSize: 11.5, color: ink(.42), marginTop: 7, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 11.5, color: txt(.42), marginTop: 7, lineHeight: 1.5 }}>
                   Printed at the foot of the report, so a screenshot that leaks is traceable to them.
                 </div>
 
                 <div style={{ marginTop: 18 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.45) }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.45) }}>
                     Expires
                   </label>
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -1046,7 +1086,7 @@ export default function Report({ shareToken = null }) {
                     ))}
                   </div>
                   {shareDays === 0 && (
-                    <div style={{ fontSize: 11.5, color: ink(.42), marginTop: 7, lineHeight: 1.5 }}>
+                    <div style={{ fontSize: 11.5, color: txt(.42), marginTop: 7, lineHeight: 1.5 }}>
                       {/* A permanent link is a permanent hole in the fence. It is allowed —
                           an exec who cannot open the report next month stops opening it —
                           but revocation is now the ONLY control, so it has to be said. */}
@@ -1087,7 +1127,7 @@ export default function Report({ shareToken = null }) {
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#C9302C', marginBottom: 4 }}>
                       This link only works on this Mac
                     </div>
-                    <div style={{ fontSize: 12.5, color: ink(.72), lineHeight: 1.6 }}>
+                    <div style={{ fontSize: 12.5, color: txt(.72), lineHeight: 1.6 }}>
                       There is no public address to build it from, so it points at <code>localhost</code>. Send it and
                       they will see nothing. Stop <code>npm run dev</code> and start it again — it brings up a free
                       Cloudflare tunnel and the next link will be public. (Needs <code>brew install cloudflared</code>, once.)
@@ -1100,7 +1140,7 @@ export default function Report({ shareToken = null }) {
                   background: ink(.04), border: `1px solid ${ink(.09)}`,
                 }}>
                   <code style={{
-                    flex: 1, fontSize: 12.5, color: ink(.85), wordBreak: 'break-all', lineHeight: 1.5,
+                    flex: 1, fontSize: 12.5, color: txt(.85), wordBreak: 'break-all', lineHeight: 1.5,
                   }}>{shareRes.url}</code>
                   <button onClick={copyShare} style={{
                     flex: 'none', padding: '9px 16px', borderRadius: 999, border: 'none', cursor: 'pointer',
@@ -1111,15 +1151,15 @@ export default function Report({ shareToken = null }) {
                   </button>
                 </div>
 
-                <div style={{ fontSize: 12.5, color: ink(.5), marginTop: 14, lineHeight: 1.65 }}>
+                <div style={{ fontSize: 12.5, color: txt(.5), marginTop: 14, lineHeight: 1.65 }}>
                   {shareRes.expiresAt ? (
-                    <>Expires <b style={{ color: ink(.75) }}>
+                    <>Expires <b style={{ color: txt(.75) }}>
                       {new Date(shareRes.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
                     </b></>
                   ) : (
-                    <><b style={{ color: ink(.75) }}>No expiry</b> — works until revoked</>
+                    <><b style={{ color: txt(.75) }}>No expiry</b> — works until revoked</>
                   )}
-                  {shareRes.label ? <> · issued to <b style={{ color: ink(.75) }}>{shareRes.label}</b></> : null}
+                  {shareRes.label ? <> · issued to <b style={{ color: txt(.75) }}>{shareRes.label}</b></> : null}
                   {shareRes.source === 'tunnel' && (
                     <div style={{ marginTop: 8, color: '#b7791f' }}>
                       {/* The single most important sentence in this dialog. The link has no
@@ -1165,10 +1205,10 @@ export default function Report({ shareToken = null }) {
           <span style={{ width: 8, height: 8, borderRadius: 999, background: C.green, boxShadow: `0 0 10px ${C.green}` }} />
           <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>Shared report — read only</span>
           {share.label && (
-            <span style={{ fontSize: 12, color: ink(.5), whiteSpace: 'nowrap' }}>· for {share.label}</span>
+            <span style={{ fontSize: 12, color: txt(.5), whiteSpace: 'nowrap' }}>· for {share.label}</span>
           )}
           {share.expiresAt && (
-            <span style={{ fontSize: 12, color: ink(.5), whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 12, color: txt(.5), whiteSpace: 'nowrap' }}>
               · expires {new Date(share.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
             </span>
           )}
@@ -1181,10 +1221,10 @@ export default function Report({ shareToken = null }) {
         <div style={{ width: 30, height: 30, borderRadius: 999, background: 'linear-gradient(135deg,#0071E3,#5856D6)', boxShadow: '0 2px 10px rgba(0,113,227,.4)', flex: 'none' }} />
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.18, marginRight: 2 }}>
           <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-.01em', whiteSpace: 'nowrap' }}>{name ? `Hi, ${name}` : 'Recovery Intelligence'}</div>
-          <div style={{ fontSize: 10.5, color: ink(.5), whiteSpace: 'nowrap' }}>Convin × RBL · {data.meta.reportDate}</div>
+          <div style={{ fontSize: 10.5, color: txt(.5), whiteSpace: 'nowrap' }}>Convin × RBL · {data.meta.reportDate}</div>
         </div>
         <span style={{ width: 1, height: 20, background: ink(.12), flex: 'none' }} />
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: ink(.55), whiteSpace: 'nowrap', padding: '0 4px' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: txt(.55), whiteSpace: 'nowrap', padding: '0 4px' }}>
           <span style={{ width: 6, height: 6, borderRadius: 999, background: '#34C759', animation: 'pulseDot 2s ease-in-out infinite' }} />Live
         </span>
         <Link href="/" title="Home" className="pill" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', textDecoration: 'none', padding: '7px 14px', background: ink(.07), whiteSpace: 'nowrap' }}>Home</Link>
@@ -1222,7 +1262,7 @@ export default function Report({ shareToken = null }) {
           return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', padding: '28px 0 2px', animation: 'fadeUp .6s cubic-bezier(.32,.72,0,1) both' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...GLASS, borderRadius: 999, padding: '7px 10px 7px 16px' }}>
-                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: ink(.45), marginRight: 2 }}>Report date</span>
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: txt(.45), marginRight: 2 }}>Report date</span>
                 <button aria-label="Older date" onClick={() => gotoDate(dateIdx + 1)} disabled={dateIdx >= manifest.dates.length - 1} style={arrowBtn(dateIdx >= manifest.dates.length - 1)}>‹</button>
                 <span style={{ fontSize: 14, fontWeight: 600, minWidth: 118, textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{day.display}</span>
                 <button aria-label="Newer date" onClick={() => gotoDate(dateIdx - 1)} disabled={dateIdx <= 0} style={arrowBtn(dateIdx <= 0)}>›</button>
@@ -1336,13 +1376,13 @@ export default function Report({ shareToken = null }) {
           <h1 className="print-solid-text" style={{ fontSize: 56, lineHeight: 1.04, fontWeight: 700, letterSpacing: '-.03em', margin: '0 0 16px', maxWidth: 900, background: 'linear-gradient(120deg,#34C759 0%,#0071E3 55%,#5856D6 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .05s' }}>
             {fmtCr(t.recovered)} recovered.<br />And every reason why.
           </h1>
-          <p style={{ fontSize: 18, lineHeight: 1.5, color: ink(.6), maxWidth: 680, margin: 0, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .1s' }}>
+          <p style={{ fontSize: 18, lineHeight: 1.5, color: txt(.6), maxWidth: 680, margin: 0, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .1s' }}>
             Convin&apos;s AI worked {fmtInt(t.accounts)} RBL accounts holding {fmtCr(t.sumOut)} in outstanding — resolving {fmtInt(t.resolved)} of them ({pct(t.resolutionRatePct)}) across {fmtInt(A.ai.attempts)} calls.
           </p>
           {/* Same provenance line as the printed cover, on screen. */}
           {data.meta.cycFile && (
-            <div style={{ fontSize: 13, color: ink(.45), marginTop: 16, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .15s' }}>
-              Source book: <span style={{ color: ink(.7), fontWeight: 600 }}>{data.meta.cycFile}</span>
+            <div style={{ fontSize: 13, color: txt(.45), marginTop: 16, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .15s' }}>
+              Source book: <span style={{ color: txt(.7), fontWeight: 600 }}>{data.meta.cycFile}</span>
             </div>
           )}
         </div>
@@ -1379,7 +1419,7 @@ export default function Report({ shareToken = null }) {
                   ? 'You are running an older version of the app than the data'
                   : 'This report was computed by an older version of the analysis engine'}
               </div>
-              <div style={{ fontSize: 13, color: ink(.72), lineHeight: 1.6 }}>
+              <div style={{ fontSize: 13, color: txt(.72), lineHeight: 1.6 }}>
                 The stored report is schema <b>v{stored}</b>; the app you are running is <b>v{PAYLOAD_VERSION}</b>.{' '}
                 {appBehind ? (
                   <>
@@ -1418,7 +1458,7 @@ export default function Report({ shareToken = null }) {
             <div style={{ fontSize: 13.5, fontWeight: 700, color: '#c0392b', marginBottom: 5 }}>
               The outcome file is older than the calls — {fmtInt(OW.blindAccounts)} accounts have no result yet
             </div>
-            <div style={{ fontSize: 13, color: ink(.74), lineHeight: 1.65 }}>
+            <div style={{ fontSize: 13, color: txt(.74), lineHeight: 1.65 }}>
               Calls ran until <b>{fmtDay(OW.lastCallDate)}</b>, but the status file stops seeing resolutions after{' '}
               <b>{fmtDay(OW.outcomeSeenTo)}</b>. Every account still being dialled after that reads{' '}
               <i>Unresolved</i> — not because the customer refused, but because <b>nobody had looked yet</b>.
@@ -1443,7 +1483,7 @@ export default function Report({ shareToken = null }) {
         {data.quality && (data.quality.unknownBands?.length > 0 || data.quality.dirtyAttemptRows > 0) && (
           <div style={{ ...GLASS, borderRadius: 18, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 11, borderColor: C.orange + '40' }}>
             <span style={{ width: 7, height: 7, borderRadius: 999, background: C.orange, marginTop: 6, flex: 'none' }} />
-            <div style={{ fontSize: 12.5, color: ink(.62), lineHeight: 1.55 }}>
+            <div style={{ fontSize: 12.5, color: txt(.62), lineHeight: 1.55 }}>
               <strong style={{ color: 'var(--text)', fontWeight: 600 }}>A note on this export.</strong>{' '}
               {data.quality.unknownBands?.length > 0 && (
                 <>We found balance {data.quality.unknownBands.length === 1 ? 'band' : 'bands'} we don&apos;t recognise
@@ -1463,9 +1503,9 @@ export default function Report({ shareToken = null }) {
           {kpis.map((k, i) => (
             <div className="hover-kpi" key={i} style={{ ...GLASS, borderRadius: 22, padding: '22px 20px', animation: 'fadeUp .7s cubic-bezier(.32,.72,0,1) both' }}>
               <div style={{ width: 8, height: 8, borderRadius: 2, background: k.color, marginBottom: 14, boxShadow: `0 0 12px ${k.color}` }} />
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.5), marginBottom: 8 }}>{k.label}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.5), marginBottom: 8 }}>{k.label}</div>
               <div style={{ fontSize: 27, fontWeight: 700, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums', marginBottom: 6 }}>{k.value}</div>
-              <div style={{ fontSize: 12.5, color: ink(.48) }}>{k.sub}</div>
+              <div style={{ fontSize: 12.5, color: txt(.48) }}>{k.sub}</div>
             </div>
           ))}
         </div>
@@ -1486,7 +1526,7 @@ export default function Report({ shareToken = null }) {
               { l: 'States covered', v: fmtInt(A.totals.statesCovered ?? A.state.filter((s) => s.state !== 'Unspecified').length), c: C.orange },
             ].map((r, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 0', borderTop: i ? `1px solid ${ink(.07)}` : 'none' }}>
-                <span style={{ fontSize: 13, color: ink(.65) }}>{r.l}</span>
+                <span style={{ fontSize: 13, color: txt(.65) }}>{r.l}</span>
                 <span style={{ fontSize: 15, fontWeight: 700, color: r.c, fontVariantNumeric: 'tabular-nums' }}>{r.v}</span>
               </div>
             ))}
@@ -1506,8 +1546,8 @@ export default function Report({ shareToken = null }) {
             ].map((r, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: i ? `1px solid ${ink(.07)}` : 'none' }}>
                 <div>
-                  <div style={{ fontSize: 13, color: ink(.7) }}>{r.l}</div>
-                  <div style={{ fontSize: 11.5, color: ink(.42) }}>{r.s}</div>
+                  <div style={{ fontSize: 13, color: txt(.7) }}>{r.l}</div>
+                  <div style={{ fontSize: 11.5, color: txt(.42) }}>{r.s}</div>
                 </div>
                 <span style={{ fontSize: 16, fontWeight: 700, color: r.c, fontVariantNumeric: 'tabular-nums' }}>{r.v}</span>
               </div>
@@ -1544,7 +1584,7 @@ export default function Report({ shareToken = null }) {
                     AI CONNECTION RATE
                   </text>
                 </svg>
-                <div style={{ fontSize: 11.5, color: ink(.45), textAlign: 'center', marginTop: 2 }}>
+                <div style={{ fontSize: 11.5, color: txt(.45), textAlign: 'center', marginTop: 2 }}>
                   connected leads ÷ total leads
                 </div>
               </div>
@@ -1553,16 +1593,16 @@ export default function Report({ shareToken = null }) {
               <div>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: ink(.7) }}>Total leads in the book</span>
+                    <span style={{ fontSize: 13, color: txt(.7) }}>Total leads in the book</span>
                     <span style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(R.totalLeads)}</span>
                   </div>
                   <div style={{ height: 22, borderRadius: 11, background: ink(.09) }} />
                 </div>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: ink(.7) }}>AI connected leads <span style={{ color: ink(.42) }}>— a human picked up</span></span>
+                    <span style={{ fontSize: 13, color: txt(.7) }}>AI connected leads <span style={{ color: txt(.42) }}>— a human picked up</span></span>
                     <span style={{ fontSize: 20, fontWeight: 700, color: C.green, fontVariantNumeric: 'tabular-nums' }}>
-                      {fmtInt(R.leadsConnected)} <span style={{ fontSize: 13, color: ink(.45), fontWeight: 500 }}>· {pct(R.connectionRatePct, 1)}</span>
+                      {fmtInt(R.leadsConnected)} <span style={{ fontSize: 13, color: txt(.45), fontWeight: 500 }}>· {pct(R.connectionRatePct, 1)}</span>
                     </span>
                   </div>
                   <div style={{ height: 22, borderRadius: 11, background: ink(.09), overflow: 'hidden' }}>
@@ -1571,9 +1611,9 @@ export default function Report({ shareToken = null }) {
                 </div>
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: ink(.7) }}>Never reached <span style={{ color: ink(.42) }}>— dialled, never answered</span></span>
-                    <span style={{ fontSize: 20, fontWeight: 700, color: ink(.55), fontVariantNumeric: 'tabular-nums' }}>
-                      {fmtInt(R.leadsNotConnected)} <span style={{ fontSize: 13, color: ink(.45), fontWeight: 500 }}>· {pct(100 - R.connectionRatePct, 1)}</span>
+                    <span style={{ fontSize: 13, color: txt(.7) }}>Never reached <span style={{ color: txt(.42) }}>— dialled, never answered</span></span>
+                    <span style={{ fontSize: 20, fontWeight: 700, color: txt(.55), fontVariantNumeric: 'tabular-nums' }}>
+                      {fmtInt(R.leadsNotConnected)} <span style={{ fontSize: 13, color: txt(.45), fontWeight: 500 }}>· {pct(100 - R.connectionRatePct, 1)}</span>
                     </span>
                   </div>
                   <div style={{ height: 22, borderRadius: 11, background: ink(.09), overflow: 'hidden' }}>
@@ -1589,7 +1629,7 @@ export default function Report({ shareToken = null }) {
 
               {/* The other connection rate. Same word, different denominator. */}
               <div style={{ padding: '16px 18px', borderRadius: 16, background: ink(.03), border: `1px solid ${ink(.06)}` }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: ink(.45), marginBottom: 12 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.45), marginBottom: 12 }}>
                   Per dial, not per lead
                 </div>
                 {[
@@ -1600,11 +1640,11 @@ export default function Report({ shareToken = null }) {
                   { l: 'Avg dials to reach one lead', v: R.avgAttemptsToConnect.toFixed(1), hi: true },
                 ].map((r, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: i ? `1px solid ${ink(.07)}` : 'none' }}>
-                    <span style={{ fontSize: 12.5, color: ink(.62) }}>{r.l}</span>
+                    <span style={{ fontSize: 12.5, color: txt(.62) }}>{r.l}</span>
                     <span style={{ fontSize: 14.5, fontWeight: 700, color: r.hi ? C.blue : ink(.85), fontVariantNumeric: 'tabular-nums' }}>{r.v}</span>
                   </div>
                 ))}
-                <div style={{ fontSize: 11, color: ink(.42), marginTop: 10, lineHeight: 1.5 }}>
+                <div style={{ fontSize: 11, color: txt(.42), marginTop: 10, lineHeight: 1.5 }}>
                   This is <b>{pct(R.callConnectRatePct, 1)}</b>, not {pct(R.connectionRatePct, 1)} — a lead who never answers is dialled
                   many times and drags the per-dial figure down. Both are true. Don&apos;t quote one as the other.
                 </div>
@@ -1618,17 +1658,17 @@ export default function Report({ shareToken = null }) {
               display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap',
             }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', color: ink(.5) }}>Reached by the AI</div>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', color: txt(.5) }}>Reached by the AI</div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: '#248A3D', fontVariantNumeric: 'tabular-nums' }}>{pct(R.resolutionConnectedPct, 1)}</div>
-                <div style={{ fontSize: 11.5, color: ink(.45) }}>{fmtInt(R.resolvedConnected)} of {fmtInt(R.leadsConnected)} resolved</div>
+                <div style={{ fontSize: 11.5, color: txt(.45) }}>{fmtInt(R.resolvedConnected)} of {fmtInt(R.leadsConnected)} resolved</div>
               </div>
-              <div style={{ fontSize: 20, color: ink(.3) }}>vs</div>
+              <div style={{ fontSize: 20, color: txt(.3) }}>vs</div>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', color: ink(.5) }}>Never reached</div>
-                <div style={{ fontSize: 24, fontWeight: 700, color: ink(.55), fontVariantNumeric: 'tabular-nums' }}>{pct(R.resolutionNotConnectedPct, 1)}</div>
-                <div style={{ fontSize: 11.5, color: ink(.45) }}>{fmtInt(R.resolvedNotConnected)} of {fmtInt(R.leadsNotConnected)} resolved</div>
+                <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', color: txt(.5) }}>Never reached</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: txt(.55), fontVariantNumeric: 'tabular-nums' }}>{pct(R.resolutionNotConnectedPct, 1)}</div>
+                <div style={{ fontSize: 11.5, color: txt(.45) }}>{fmtInt(R.resolvedNotConnected)} of {fmtInt(R.leadsNotConnected)} resolved</div>
               </div>
-              <div style={{ flex: 1, minWidth: 320, fontSize: 13, color: ink(.72), lineHeight: 1.6 }}>
+              <div style={{ flex: 1, minWidth: 320, fontSize: 13, color: txt(.72), lineHeight: 1.6 }}>
                 A lead the AI actually reached resolves{' '}
                 <b style={{ color: '#248A3D' }}>{(R.resolutionConnectedPct - R.resolutionNotConnectedPct).toFixed(1)} points higher</b>{' '}
                 than one it never got hold of.{' '}
@@ -1636,7 +1676,7 @@ export default function Report({ shareToken = null }) {
                     groups that were not randomly assigned — reachable customers may simply be
                     more reachable people. Claiming causation here is the fastest way to lose a
                     room, and conceding it costs us nothing: the gap is still the gap. */}
-                <span style={{ color: ink(.5) }}>
+                <span style={{ color: txt(.5) }}>
                   These groups were not randomly assigned, so treat this as the measured gap between
                   reached and unreached customers, not as proof the call caused the payment.
                 </span>
@@ -1654,13 +1694,13 @@ export default function Report({ shareToken = null }) {
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: durColor(d.resolutionPct), fontVariantNumeric: 'tabular-nums' }}>{pct(d.resolutionPct, 0)}</div>
                   <div style={{ width: '100%', maxWidth: 66, borderRadius: '7px 7px 3px 3px', height: `${d.resolutionPct}%`, background: `linear-gradient(180deg,${durColor(d.resolutionPct)},${durColor(d.resolutionPct)}bb)`, transition: 'height 1.1s cubic-bezier(.32,.72,0,1)', minHeight: 6 }} />
-                  <div style={{ fontSize: 11.5, color: ink(.55), textAlign: 'center', lineHeight: 1.2 }}>{d.bucket}</div>
-                  <div style={{ fontSize: 10.5, color: ink(.38) }}>n={fmtInt(d.n)}</div>
+                  <div style={{ fontSize: 11.5, color: txt(.55), textAlign: 'center', lineHeight: 1.2 }}>{d.bucket}</div>
+                  <div style={{ fontSize: 10.5, color: txt(.38) }}>n={fmtInt(d.n)}</div>
                 </div>
               ))}
             </div>
             {OW?.blindAccounts > 0 && (
-              <div style={{ fontSize: 11, color: ink(.4), marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: txt(.4), marginTop: 10 }}>
                 Excludes {fmtInt(OW.blindAccounts)} accounts whose calls continued past the outcome file
                 ({fmtDay(OW.outcomeSeenTo)}) — their result is not yet known.
               </div>
@@ -1671,13 +1711,13 @@ export default function Report({ shareToken = null }) {
             {[
               { l: 'Total attempts', v: fmtInt(A.ai.attempts), c: C.blue },
               { l: 'Connected', v: fmtInt(A.ai.connected), c: C.green },
-              { l: 'Not connected', v: fmtInt(A.ai.notConnected), c: ink(.5) },
+              { l: 'Not connected', v: fmtInt(A.ai.notConnected), c: txt(.5) },
               { l: 'Connect rate', v: pct(A.ai.connectRatePct), c: C.teal },
               { l: 'Talk-minutes', v: fmtInt(A.ai.talkMinutes), c: C.purple },
               { l: 'Avg attempts / account', v: A.ai.avgAttempts.toFixed(1), c: C.indigo },
             ].map((r, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: i ? '1px solid ' + ink(.07) : 'none' }}>
-                <span style={{ fontSize: 13, color: ink(.65) }}>{r.l}</span>
+                <span style={{ fontSize: 13, color: txt(.65) }}>{r.l}</span>
                 <span style={{ fontSize: 15, fontWeight: 700, color: r.c, fontVariantNumeric: 'tabular-nums' }}>{r.v}</span>
               </div>
             ))}
@@ -1723,21 +1763,21 @@ export default function Report({ shareToken = null }) {
                     const good = d.resolutionPct >= t.resolutionRatePct;
                     return (
                       <tr key={i} style={{ borderTop: `1px solid ${ink(.07)}` }}>
-                        <td style={{ padding: '11px 10px', fontWeight: 600, color: ink(.9) }}>
+                        <td style={{ padding: '11px 10px', fontWeight: 600, color: txt(.9) }}>
                           {d.name}
                           {d.name === '(Not contacted)' && (
-                            <div style={{ fontSize: 11, fontWeight: 400, color: ink(.45), marginTop: 2 }}>
+                            <div style={{ fontSize: 11, fontWeight: 400, color: txt(.45), marginTop: 2 }}>
                               Never connected — no disposition exists for these
                             </div>
                           )}
                         </td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', color: ink(.62), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.total)}</td>
+                        <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.total)}</td>
                         <td style={{ padding: '11px 10px', textAlign: 'right', fontWeight: 700, color: '#248A3D', fontVariantNumeric: 'tabular-nums' }}>{fmtCr(d.recovered)}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', color: ink(.72), fontVariantNumeric: 'tabular-nums' }}>{fmtCr(d.outstanding)}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', color: ink(.72), fontVariantNumeric: 'tabular-nums' }}>{pct(d.recoveryPct, 1)}</td>
+                        <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.72), fontVariantNumeric: 'tabular-nums' }}>{fmtCr(d.outstanding)}</td>
+                        <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.72), fontVariantNumeric: 'tabular-nums' }}>{pct(d.recoveryPct, 1)}</td>
                         <td style={{ padding: '11px 10px', textAlign: 'right', fontWeight: 700, color: good ? '#248A3D' : '#C9302C', fontVariantNumeric: 'tabular-nums' }}>
                           {pct(d.resolutionPct, 1)}
-                          <div style={{ fontSize: 10, fontWeight: 400, color: ink(.4) }}>vs {pct(t.resolutionRatePct, 0)}</div>
+                          <div style={{ fontSize: 10, fontWeight: 400, color: txt(.4) }}>vs {pct(t.resolutionRatePct, 0)}</div>
                         </td>
                         <td style={{ padding: '11px 10px' }}>
                           <div style={{ height: 10, borderRadius: 5, background: ink(.07), overflow: 'hidden' }}>
@@ -1749,7 +1789,7 @@ export default function Report({ shareToken = null }) {
                   })}
                 </tbody>
               </table>
-              <div style={{ marginTop: 12, fontSize: 12, color: ink(.5), lineHeight: 1.6 }}>
+              <div style={{ marginTop: 12, fontSize: 12, color: txt(.5), lineHeight: 1.6 }}>
                 {/* Small L2 buckets are rolled up rather than charted. One account at 100%
                     resolution would otherwise sit at the top of a "best disposition" list,
                     and that is not an insight — it is a single customer. */}
@@ -1786,7 +1826,7 @@ export default function Report({ shareToken = null }) {
               { l: 'Recovery rate', v: pct(t.recoveryRatePct, 1), c: C.blue },
             ].map((m, i) => (
               <div key={i} style={{ flex: '1 1 160px', padding: '12px 14px', borderRadius: 14, background: ink(.03), border: `1px solid ${ink(.06)}` }}>
-                <div style={{ fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', color: ink(.5) }}>{m.l}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', color: txt(.5) }}>{m.l}</div>
                 <div style={{ fontSize: 19, fontWeight: 700, color: m.c, fontVariantNumeric: 'tabular-nums', marginTop: 4 }}>{m.v}</div>
               </div>
             ))}
@@ -1794,11 +1834,11 @@ export default function Report({ shareToken = null }) {
           {ovr.map((r, i) => (
             <div key={i} style={{ marginBottom: 13 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13, marginBottom: 5 }}>
-                <span style={{ color: ink(.78), fontWeight: 600 }}>{r.band}</span>
+                <span style={{ color: txt(.78), fontWeight: 600 }}>{r.band}</span>
                 <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>
                   <b style={{ color: '#248A3D' }}>{fmtCr(r.recovered)}</b>
-                  <span style={{ color: ink(.4) }}> recovered of </span>
-                  <b style={{ color: ink(.8) }}>{fmtCr(r.outstanding)}</b>
+                  <span style={{ color: txt(.4) }}> recovered of </span>
+                  <b style={{ color: txt(.8) }}>{fmtCr(r.outstanding)}</b>
                   <span style={{ color: r.recoveryPct >= t.recoveryRatePct ? '#248A3D' : '#C9302C', fontWeight: 700 }}>{'  '}{pct(r.recoveryPct, 1)}</span>
                 </span>
               </div>
@@ -1810,7 +1850,7 @@ export default function Report({ shareToken = null }) {
                   <div style={{ width: `${r.recoveryPct}%`, height: '100%', borderRadius: 7, background: `linear-gradient(90deg,${C.green},#8BC34A)`, transition: 'width 1.1s cubic-bezier(.32,.72,0,1)' }} />
                 </div>
               </div>
-              <div style={{ fontSize: 11.5, color: ink(.42), marginTop: 4 }}>
+              <div style={{ fontSize: 11.5, color: txt(.42), marginTop: 4 }}>
                 {fmtInt(r.count)} accounts · {fmtCr(r.pending)} still pending
               </div>
             </div>
@@ -1854,11 +1894,11 @@ export default function Report({ shareToken = null }) {
               /* One segment on every account. Say so, rather than draw a single bar at
                  100% and let an exec think it means something. A bank respects being
                  told what the data cannot support far more than it respects a chart. */
-              <div style={{ fontSize: 14, color: ink(.72), lineHeight: 1.65 }}>
-                Every account in this file carries the same segment — <b style={{ color: ink(.92) }}>{segments[0].name}</b>{' '}
+              <div style={{ fontSize: 14, color: txt(.72), lineHeight: 1.65 }}>
+                Every account in this file carries the same segment — <b style={{ color: txt(.92) }}>{segments[0].name}</b>{' '}
                 ({fmtInt(segments[0].count)} accounts, {pct(segments[0].resolutionPct, 1)} resolved). This cycle <i>is</i> the {segments[0].name.toLowerCase()} book,
                 so there is no second segment to compare it against, and no honest lift to report.
-                <div style={{ marginTop: 10, color: ink(.55), fontSize: 13 }}>
+                <div style={{ marginTop: 10, color: txt(.55), fontSize: 13 }}>
                   Send a cycle that spans more than one segment and the comparison appears automatically.
                 </div>
               </div>
@@ -1872,11 +1912,11 @@ export default function Report({ shareToken = null }) {
             <Title t="State-wise Performance" s="Where the book concentrates, and how each state is recovering" />
             {stateTop.map((s, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 11 }}>
-                <div style={{ width: 120, fontSize: 13, color: ink(.72), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.state}</div>
+                <div style={{ width: 120, fontSize: 13, color: txt(.72), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.state}</div>
                 <div style={{ flex: 1, height: 9, borderRadius: 5, background: ink(.07), overflow: 'hidden' }}>
                   <div style={{ height: '100%', borderRadius: 5, width: `${s.outstanding / stateMax * 100}%`, background: 'linear-gradient(90deg,#0071E3,#5AC8FA)', transition: 'width 1.1s cubic-bezier(.32,.72,0,1)' }} />
                 </div>
-                <div style={{ width: 128, textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums', color: ink(.85) }}>{fmtCr(s.outstanding)} · {pct(s.resolutionPct, 0)}</div>
+                <div style={{ width: 128, textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums', color: txt(.85) }}>{fmtCr(s.outstanding)} · {pct(s.resolutionPct, 0)}</div>
               </div>
             ))}
           </Card>
@@ -1885,7 +1925,7 @@ export default function Report({ shareToken = null }) {
             {I.dial.map((d, i) => (
               <div key={i} style={{ marginBottom: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-                  <span style={{ color: ink(.68) }}>{d.band} attempts · n={fmtInt(d.n)}</span>
+                  <span style={{ color: txt(.68) }}>{d.band} attempts · n={fmtInt(d.n)}</span>
                   {/* A percentage of 6 accounts is not a rate. Print the count. */}
                   <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: d.thin ? ink(.45) : undefined }}>
                     {d.thin ? 'too few to rate' : `${pct(d.resolutionPct, 0)} resolved`}
@@ -1899,7 +1939,7 @@ export default function Report({ shareToken = null }) {
                 )}
               </div>
             ))}
-            <div style={{ fontSize: 11, color: ink(.4), marginTop: 6 }}>
+            <div style={{ fontSize: 11, color: txt(.4), marginTop: 6 }}>
               Faded = connect rate · Solid = resolution.
               {OW?.blindAccounts > 0
                 ? <> Excludes {fmtInt(OW.blindAccounts)} accounts still being dialled after the outcome file was pulled ({fmtDay(OW.outcomeSeenTo)}) — their result is not known, and counting them as failures would drive the heavily-dialled bands to a false zero.</>
@@ -1914,7 +1954,7 @@ export default function Report({ shareToken = null }) {
           <div className="table-scroll" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ color: ink(.45), textAlign: 'left' }}>
+                <tr style={{ color: txt(.45), textAlign: 'left' }}>
                   {['#', 'Customer', 'State', 'Outstanding', 'AI Connected', 'PTP', 'Status'].map((h, i) => (
                     <th key={i} style={{ padding: '10px 12px', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid ' + ink(.08), textAlign: i >= 3 ? 'right' : 'left' }}>{h}</th>
                   ))}
@@ -1923,12 +1963,12 @@ export default function Report({ shareToken = null }) {
               <tbody>
                 {A.topOutstanding.map((r, i) => (
                   <tr key={i} className="hover-row">
-                    <td style={{ padding: '10px 12px', color: ink(.4), fontVariantNumeric: 'tabular-nums' }}>{i + 1}</td>
+                    <td style={{ padding: '10px 12px', color: txt(.4), fontVariantNumeric: 'tabular-nums' }}>{i + 1}</td>
                     <td style={{ padding: '10px 12px', fontWeight: 600 }}>{r.name}</td>
-                    <td style={{ padding: '10px 12px', color: ink(.65) }}>{r.state}</td>
+                    <td style={{ padding: '10px 12px', color: txt(.65) }}>{r.state}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtCr(r.outstanding)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: ink(.65) }}>{r.connected}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.ptp ? <span style={{ color: C.green, fontWeight: 600 }}>Yes</span> : <span style={{ color: ink(.35) }}>—</span>}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: txt(.65) }}>{r.connected}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.ptp ? <span style={{ color: C.green, fontWeight: 600 }}>Yes</span> : <span style={{ color: txt(.35) }}>—</span>}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                       <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: (r.status === 'Resolved' ? C.green : C.orange) + '22', color: r.status === 'Resolved' ? C.green : C.orange }}>{r.status}</span>
                     </td>
@@ -2006,7 +2046,7 @@ export default function Report({ shareToken = null }) {
                         <text x={g.x1 + 14} y={g.yMid - 2} fontSize="10" fontWeight="700" fill="#C9302C">
                           −{fmtInt(g.drop)}
                         </text>
-                        <text x={g.x1 + 14} y={g.yMid + 11} fontSize="9" fill={ink(.45)}>
+                        <text x={g.x1 + 14} y={g.yMid + 11} fontSize="9" fill={txt(.45)}>
                           {pct(g.dropPct, 0)} lost
                         </text>
                       </>
@@ -2017,7 +2057,7 @@ export default function Report({ shareToken = null }) {
                       fill={g.stage.resolutionPct >= t.resolutionRatePct ? '#248A3D' : ink(.5)}>
                       {pct(g.stage.resolutionPct, 1)}
                     </text>
-                    <text x={g.x0 - 14} y={g.yMid + 11} textAnchor="end" fontSize="9" fill={ink(.4)}>
+                    <text x={g.x0 - 14} y={g.yMid + 11} textAnchor="end" fontSize="9" fill={txt(.4)}>
                       resolved
                     </text>
                   </g>
@@ -2028,7 +2068,7 @@ export default function Report({ shareToken = null }) {
                     so it painted over the blue rather than under it. The caption and the
                     curves already carry the message; the rule was noise. */}
                 <text x={FW / 2} y={funnelGeom.neck.y + 20} textAnchor="middle" fontSize="9" fontWeight="700"
-                  letterSpacing="1.2" fill={ink(.42)}>
+                  letterSpacing="1.2" fill={txt(.42)}>
                   OUTCOMES — PARALLEL, NOT SEQUENTIAL
                 </text>
 
@@ -2042,7 +2082,7 @@ export default function Report({ shareToken = null }) {
                         clipped it to "SE TO PAY L". */}
                     {o.label.map((line, k) => (
                       <text key={k} x={o.x + o.w / 2} y={o.y - 16 + k * 11} textAnchor="middle"
-                        fontSize="9" fontWeight="700" letterSpacing="0.4" fill={ink(.6)}>
+                        fontSize="9" fontWeight="700" letterSpacing="0.4" fill={txt(.6)}>
                         {line}
                       </text>
                     ))}
@@ -2051,7 +2091,7 @@ export default function Report({ shareToken = null }) {
                     <text x={o.x + o.w / 2} y={o.y + o.h / 2 + 6} textAnchor="middle" fontSize="17" fontWeight="700" fill="#fff">
                       {fmtInt(o.stage.value)}
                     </text>
-                    <text x={o.x + o.w / 2} y={o.y + o.h + 15} textAnchor="middle" fontSize="9.5" fill={ink(.5)}>
+                    <text x={o.x + o.w / 2} y={o.y + o.h + 15} textAnchor="middle" fontSize="9.5" fill={txt(.5)}>
                       {pct(o.stage.pctOfBook, 1)} of book
                     </text>
                     {o.stage.n < A.funnel.length && (
@@ -2077,11 +2117,11 @@ export default function Report({ shareToken = null }) {
                         <span style={{ fontSize: 12.5 }}>
                           <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, marginRight: 8,
                             background: f.kind === 'journey' ? C.blue : (good ? C.green : C.red) }} />
-                          <b style={{ color: ink(.9) }}>{f.stage}</b>
+                          <b style={{ color: txt(.9) }}>{f.stage}</b>
                         </span>
                         <span style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(f.value)}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: ink(.45), marginLeft: 15, marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: txt(.45), marginLeft: 15, marginTop: 2 }}>
                         {pct(f.pctOfBook, 1)} of book{step !== null ? ` · ${pct(step, 0)} step` : ''}
                         {f.n < A.funnel.length && (
                           <> · <b style={{ color: good ? '#248A3D' : '#C9302C' }}>{pct(f.resolutionPct, 1)} resolved</b></>
@@ -2095,7 +2135,7 @@ export default function Report({ shareToken = null }) {
           )}
 
           {ptpStage && paidStage && ptpStage.resolutionPct < paidStage.resolutionPct && (
-            <div style={{ marginTop: 18, padding: '14px 16px', borderRadius: 14, background: 'rgba(255,59,48,.06)', border: '1px solid rgba(255,59,48,.18)', fontSize: 13, color: ink(.75), lineHeight: 1.6 }}>
+            <div style={{ marginTop: 18, padding: '14px 16px', borderRadius: 14, background: 'rgba(255,59,48,.06)', border: '1px solid rgba(255,59,48,.18)', fontSize: 13, color: txt(.75), lineHeight: 1.6 }}>
               <b style={{ color: '#C9302C' }}>Read the two outcome channels together.</b>{' '}
               {fmtInt(ptpStage.value)} customers promised to pay later, and only {pct(ptpStage.resolutionPct, 1)} of them did.
               {' '}{fmtInt(paidStage.value)} said the payment was already made, and {pct(paidStage.resolutionPct, 1)} of those resolved.
@@ -2128,9 +2168,9 @@ export default function Report({ shareToken = null }) {
                 <tbody>
                   {durL2.map((d, i) => (
                     <tr key={i} style={{ borderTop: `1px solid ${ink(.07)}` }}>
-                      <td style={{ padding: '11px 10px', fontWeight: 600, color: ink(.9) }}>{d.name}</td>
-                      <td style={{ padding: '11px 10px', textAlign: 'right', color: ink(.62), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.n)}</td>
-                      <td style={{ padding: '11px 10px', textAlign: 'right', color: ink(.62), fontVariantNumeric: 'tabular-nums' }}>{mmss(d.avgSeconds)}</td>
+                      <td style={{ padding: '11px 10px', fontWeight: 600, color: txt(.9) }}>{d.name}</td>
+                      <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.n)}</td>
+                      <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>{mmss(d.avgSeconds)}</td>
                       <td style={{ padding: '11px 10px', textAlign: 'right', fontWeight: 700, color: durColor(d.resolutionPct), fontVariantNumeric: 'tabular-nums' }}>{pct(d.resolutionPct, 1)}</td>
                       {d.buckets.map((b, j) => (
                         <td key={j} style={{ padding: 4, textAlign: 'center' }}>
@@ -2138,7 +2178,7 @@ export default function Report({ shareToken = null }) {
                               NOT drawn as "100%" — that is noise, and a heat map makes noise
                               look like the strongest finding on the page. */}
                           {b.n === 0 ? (
-                            <span style={{ color: ink(.2) }}>·</span>
+                            <span style={{ color: txt(.2) }}>·</span>
                           ) : (
                             <div title={`${b.n} account${b.n === 1 ? '' : 's'}`} style={{
                               borderRadius: 6, padding: '7px 4px',
@@ -2147,7 +2187,7 @@ export default function Report({ shareToken = null }) {
                               fontWeight: b.n < 10 ? 400 : 700, fontVariantNumeric: 'tabular-nums',
                             }}>
                               {b.n < 10 ? `n=${b.n}` : pct(b.resolutionPct, 0)}
-                              <div style={{ fontSize: 10, fontWeight: 400, color: ink(.45), marginTop: 1 }}>{b.n >= 10 ? `n=${fmtInt(b.n)}` : ''}</div>
+                              <div style={{ fontSize: 10, fontWeight: 400, color: txt(.45), marginTop: 1 }}>{b.n >= 10 ? `n=${fmtInt(b.n)}` : ''}</div>
                             </div>
                           )}
                         </td>
@@ -2156,7 +2196,7 @@ export default function Report({ shareToken = null }) {
                   ))}
                 </tbody>
               </table>
-              <div style={{ marginTop: 12, fontSize: 12, color: ink(.5), lineHeight: 1.6 }}>
+              <div style={{ marginTop: 12, fontSize: 12, color: txt(.5), lineHeight: 1.6 }}>
                 Shaded cells are resolution rate; cells with fewer than 10 accounts show the raw count instead, because a
                 percentage of eight accounts is not a finding.
                 {A.l2BelowThreshold > 0 && ` ${fmtInt(A.l2BelowThreshold)} accounts sit in L2 dispositions with fewer than ${A.l2Min} accounts each and are not charted.`}
@@ -2178,12 +2218,12 @@ export default function Report({ shareToken = null }) {
           <Card span={12}>
             <Title t="Recoverable Opportunity" s="The open book, and what to work next" />
             <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums' }}>{fmtCr(I.opportunity.openOutstanding)}</div>
-            <div style={{ fontSize: 12.5, color: ink(.48), marginBottom: 16 }}>still outstanding across {fmtInt(t.unresolved)} open accounts</div>
+            <div style={{ fontSize: 12.5, color: txt(.48), marginBottom: 16 }}>still outstanding across {fmtInt(t.unresolved)} open accounts</div>
             {I.opportunity.lists.map((l, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid ' + ink(.07) }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: ink(.8) }}>{l.label}</div>
-                  <div style={{ fontSize: 11.5, color: ink(.45) }}>{l.note} · {fmtInt(l.count)} accounts</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: txt(.8) }}>{l.label}</div>
+                  <div style={{ fontSize: 11.5, color: txt(.45) }}>{l.note} · {fmtInt(l.count)} accounts</div>
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: [C.green, C.blue, C.orange][i], fontVariantNumeric: 'tabular-nums' }}>{fmtCr(l.amount)}</div>
               </div>
@@ -2217,7 +2257,7 @@ export default function Report({ shareToken = null }) {
           <div className="table-scroll" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ color: ink(.45), textAlign: 'left' }}>
+                <tr style={{ color: txt(.45), textAlign: 'left' }}>
                   {[['Customer', 'Name'], ['Status', 'Status'], ['Disposition', 'Disposition'], ['Region', 'Region'], ['Band', 'Band'], ['Outstanding', 'Outstanding'], ['Recovered', 'Recovered'], ['Att', 'Attempts'], ['Conn', 'Connected'], ['Lead', null]].map(([h, key], i) => {
                     const sortable = key && ['Outstanding', 'Recovered', 'Attempts', 'Connected'].includes(key);
                     return (
@@ -2234,31 +2274,31 @@ export default function Report({ shareToken = null }) {
                   <tr key={i} className="hover-row">
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ fontWeight: 600 }}>{r[IDX.Name]}</div>
-                      <div style={{ fontSize: 11, color: ink(.4), fontVariantNumeric: 'tabular-nums' }}>•••• {String(r[IDX.Mobile]).slice(-4)}</div>
+                      <div style={{ fontSize: 11, color: txt(.4), fontVariantNumeric: 'tabular-nums' }}>•••• {String(r[IDX.Mobile]).slice(-4)}</div>
                     </td>
                     <td style={{ padding: '10px 12px' }}>
                       <span style={{ fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: (r[IDX.Status] === 'Resolved' ? C.green : C.orange) + '22', color: r[IDX.Status] === 'Resolved' ? C.green : C.orange }}>{r[IDX.Status]}</span>
                     </td>
-                    <td style={{ padding: '10px 12px', color: ink(.65) }}>{r[IDX.Disposition]}</td>
-                    <td style={{ padding: '10px 12px', color: ink(.65) }}>{r[IDX.Region]}</td>
-                    <td style={{ padding: '10px 12px', color: ink(.65) }}>{r[IDX.Band]}</td>
+                    <td style={{ padding: '10px 12px', color: txt(.65) }}>{r[IDX.Disposition]}</td>
+                    <td style={{ padding: '10px 12px', color: txt(.65) }}>{r[IDX.Region]}</td>
+                    <td style={{ padding: '10px 12px', color: txt(.65) }}>{r[IDX.Band]}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtCr(r[IDX.Outstanding])}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r[IDX.Recovered] > 0 ? C.green : ink(.3) }}>{r[IDX.Recovered] > 0 ? fmtCr(r[IDX.Recovered]) : '—'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: ink(.6) }}>{r[IDX.Attempts]}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: ink(.6) }}>{r[IDX.Connected]}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: txt(.6) }}>{r[IDX.Attempts]}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: txt(.6) }}>{r[IDX.Connected]}</td>
                     <td style={{ padding: '10px 12px' }}>
-                      {r[IDX.Lead] ? <a href={r[IDX.Lead]} target="_blank" rel="noreferrer" style={{ color: C.blue, fontWeight: 600, textDecoration: 'none', fontSize: 12 }}>Open ↗</a> : <span style={{ color: ink(.3) }}>—</span>}
+                      {r[IDX.Lead] ? <a href={r[IDX.Lead]} target="_blank" rel="noreferrer" style={{ color: C.blue, fontWeight: 600, textDecoration: 'none', fontSize: 12 }}>Open ↗</a> : <span style={{ color: txt(.3) }}>—</span>}
                     </td>
                   </tr>
                 ))}
                 {pageRows.length === 0 && (
-                  <tr><td colSpan={10} style={{ padding: '28px 12px', textAlign: 'center', color: ink(.4) }}>{exLoading ? 'Loading…' : 'No matching accounts'}</td></tr>
+                  <tr><td colSpan={10} style={{ padding: '28px 12px', textAlign: 'center', color: txt(.4) }}>{exLoading ? 'Loading…' : 'No matching accounts'}</td></tr>
                 )}
               </tbody>
             </table>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
-            <div style={{ fontSize: 12.5, color: ink(.5) }}>Page {cur + 1} of {totalPages}</div>
+            <div style={{ fontSize: 12.5, color: txt(.5) }}>Page {cur + 1} of {totalPages}</div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setPage(Math.max(0, cur - 1))} disabled={cur === 0}
                 style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 999, border: '1px solid ' + ink(.14), background: cur === 0 ? ink(.03) : 'var(--input-bg, rgba(255,255,255,.7))', color: cur === 0 ? ink(.3) : 'var(--text,#1D1D1F)', cursor: cur === 0 ? 'default' : 'pointer' }}>Previous</button>
@@ -2269,10 +2309,10 @@ export default function Report({ shareToken = null }) {
         </Card>
         )}
 
-        <div style={{ textAlign: 'center', fontSize: 12, color: ink(.4), marginTop: 40, lineHeight: 1.7 }}>
+        <div style={{ textAlign: 'center', fontSize: 12, color: txt(.4), marginTop: 40, lineHeight: 1.7 }}>
           Convin × RBL Bank · Recovery Intelligence · {data.meta.reportDate} · Recovered value counts full outstanding on resolved accounts.
           {shareToken && share && (
-            <div style={{ marginTop: 8, color: ink(.35) }}>
+            <div style={{ marginTop: 8, color: txt(.35) }}>
               {/* The watermark. Quiet, but on every page and in every screenshot. */}
               Confidential · shared read-only{share.label ? ` with ${share.label}` : ''} · no customer names, mobile numbers
               or account numbers are included in this view.

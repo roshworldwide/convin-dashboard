@@ -7,6 +7,19 @@ import { autoMap, FIELD_GROUPS, FIELD_LABELS } from '../../lib/normalize.mjs';
 import { uploadFiles } from '../../lib/upload_client.mjs';
 
 const ink = (a) => `rgba(var(--ink),${a})`;
+
+/* Text vs hairlines — the full reasoning is in dashboard/Report.jsx.
+   ink() paints dividers and fills, and stays faint on purpose.
+   txt() paints WORDS. The text alphas here had drifted to roughly 2.5:1 contrast on
+   white — below the 4.5:1 WCAG AA needs for body text, and unreadable on a projector
+   or a printout. txt() floors them without flattening the hierarchy. */
+const TEXT_FLOOR = 0.66;
+const textAlpha = (a) => {
+  if (a >= 0.92) return 1;
+  const t = Math.min(1, Math.max(0, (a - 0.2) / (0.92 - 0.2)));
+  return +(TEXT_FLOOR + t * (1 - TEXT_FLOOR)).toFixed(3);
+};
+const txt = (a) => `rgba(var(--ink),${textAlpha(a)})`;
 const GLASS = { background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', backdropFilter: 'blur(30px) saturate(180%)', WebkitBackdropFilter: 'blur(30px) saturate(180%)', boxShadow: 'var(--glass-shadow)' };
 const BTN = { border: 'none', borderRadius: 999, cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' };
 const SELECT = { width: '100%', padding: '9px 30px 9px 14px', fontSize: 12.5, borderRadius: 999, border: '1px solid ' + ink(.14), background: 'var(--input-bg)', outline: 'none', color: 'var(--text)' };
@@ -46,7 +59,7 @@ function Drop({ title, hint, files, onPick, multiple, accent }) {
         <div style={{ width: 38, height: 38, borderRadius: 999, background: accent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 300, flex: 'none' }}>↑</div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</div>
-          <div style={{ fontSize: 11.5, color: ink(.5), marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 11.5, color: txt(.5), marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {files.length ? files.map((f) => f.name).join(', ') : hint}
           </div>
         </div>
@@ -172,7 +185,7 @@ export default function Upload() {
   const shell = (c) => (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', color: 'var(--text)', fontFamily: FONT }}>{c}</div>
   );
-  if (authed === null) return shell(<div style={{ color: ink(.5), fontSize: 15 }}>Loading…</div>);
+  if (authed === null) return shell(<div style={{ color: txt(.5), fontSize: 15 }}>Loading…</div>);
   if (!authed) return shell(
     <div style={{ ...GLASS, borderRadius: 28, padding: 32, textAlign: 'center' }}>
       <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Please sign in first</div>
@@ -188,7 +201,7 @@ export default function Upload() {
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.13em', color: '#0071E3', textTransform: 'uppercase' }}>New report</div>
           <h1 style={{ fontSize: 32, fontWeight: 700, letterSpacing: '-.03em', margin: '6px 0 4px' }}>Upload a new report</h1>
-          <div style={{ fontSize: 13.5, color: ink(.55) }}>
+          <div style={{ fontSize: 13.5, color: txt(.55) }}>
             {name ? `Hi, ${name} — ` : ''}drop your sheets. We do the lookup, you keep your evening.
           </div>
         </div>
@@ -235,11 +248,11 @@ export default function Upload() {
 
         {/* The two sentences on this page that RBL's risk team will actually care about. */}
         {mode === 'split' && (
-          <div style={{ marginTop: 12, fontSize: 11.5, color: ink(.45), lineHeight: 1.55 }}>
+          <div style={{ marginTop: 12, fontSize: 11.5, color: txt(.45), lineHeight: 1.55 }}>
             Joined on Account No — no VLOOKUP, no manual step. The report covers
-            <strong style={{ color: ink(.62), fontWeight: 600 }}> every account in RBL&apos;s book</strong>, including
+            <strong style={{ color: txt(.62), fontWeight: 600 }}> every account in RBL&apos;s book</strong>, including
             the ones the AI never reached, so the denominator is theirs and not ours. And the
-            <strong style={{ color: ink(.62), fontWeight: 600 }}> outcome is taken from RBL&apos;s own status file</strong>,
+            <strong style={{ color: txt(.62), fontWeight: 600 }}> outcome is taken from RBL&apos;s own status file</strong>,
             never from Convin&apos;s export. We do not label our own results.
           </div>
         )}
@@ -253,13 +266,13 @@ export default function Upload() {
                 {missingRequired.length ? `${missingRequired.length} required missing` : `${mappedCount} of ${headers.length} columns matched`}
               </div>
             </div>
-            <div style={{ fontSize: 12, color: ink(.5), marginBottom: 14, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: txt(.5), marginBottom: 14, lineHeight: 1.5 }}>
               We auto-detected these from your headers. Change any that look wrong — every metric on the dashboard is built from them.
             </div>
 
             {groups.map((g) => (
               <div key={g.title} style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: ink(.42), marginBottom: 8 }}>{g.title}</div>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: txt(.42), marginBottom: 8 }}>{g.title}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 8 }}>
                   {g.keys.map((k) => {
                     const req = REQUIRED.includes(k);
@@ -267,7 +280,7 @@ export default function Upload() {
                     return (
                       <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{ width: 6, height: 6, borderRadius: 999, flex: 'none', background: ok ? '#34C759' : (req ? '#FF3B30' : ink(.2)) }} />
-                        <div style={{ fontSize: 12.5, color: ink(.72), width: 132, flex: 'none' }}>
+                        <div style={{ fontSize: 12.5, color: txt(.72), width: 132, flex: 'none' }}>
                           {FIELD_LABELS[k]}{req && <span style={{ color: '#FF3B30' }}> *</span>}
                         </div>
                         <select value={mapping[k] || ''} onChange={(e) => setMapping({ ...mapping, [k]: e.target.value })} style={SELECT}>
@@ -290,17 +303,17 @@ export default function Upload() {
         {/* date + slot */}
         <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
           <div style={{ flex: 2 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: ink(.5), marginBottom: 6 }}>Report date</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: txt(.5), marginBottom: 6 }}>Report date</div>
             <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)}
               style={{ width: '100%', padding: '11px 16px', fontSize: 13.5, borderRadius: 999, border: '1px solid ' + ink(.14), background: 'var(--input-bg)', outline: 'none', color: 'var(--text)' }} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: ink(.5), marginBottom: 6 }}>Day #</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: txt(.5), marginBottom: 6 }}>Day #</div>
             <input type="number" min={1} value={slot} onChange={(e) => setSlot(e.target.value)}
               style={{ width: '100%', padding: '11px 16px', fontSize: 13.5, borderRadius: 999, border: '1px solid ' + ink(.14), background: 'var(--input-bg)', outline: 'none', color: 'var(--text)' }} />
           </div>
         </div>
-        <div style={{ fontSize: 11.5, color: ink(.45), marginTop: 8 }}>Becomes the tab label — <b>Day 1</b>, <b>Day 2</b>… Re-uploading the same number <b>replaces</b> that day; it never adds to it.</div>
+        <div style={{ fontSize: 11.5, color: txt(.45), marginTop: 8 }}>Becomes the tab label — <b>Day 1</b>, <b>Day 2</b>… Re-uploading the same number <b>replaces</b> that day; it never adds to it.</div>
 
         {error && <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 16, background: 'rgba(255,59,48,.1)', color: '#FF3B30', fontSize: 13, fontWeight: 500 }}>{error}</div>}
 
@@ -308,14 +321,14 @@ export default function Upload() {
           <div style={{ marginTop: 16, padding: '18px 20px', borderRadius: 20, background: 'rgba(52,199,89,.1)', border: '1px solid rgba(52,199,89,.3)' }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#34C759' }}>✓ Built from {fmtInt(result.rowCount)} accounts</div>
             {result.stats && result.stats.extraSheets > 0 && (
-              <div style={{ fontSize: 12.5, color: ink(.6), marginTop: 6 }}>
+              <div style={{ fontSize: 12.5, color: txt(.6), marginTop: 6 }}>
                 Auto-joined {fmtInt(result.stats.matched)} accounts across {result.stats.extraSheets} sheet{result.stats.extraSheets === 1 ? '' : 's'} · {fmtInt(result.stats.filledCells)} values filled in
               </div>
             )}
             {(result.warnings || []).map((w, i) => (
               <div key={i} style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: 'rgba(255,149,0,.12)', color: '#b7791f', fontSize: 12, lineHeight: 1.5 }}>⚠ {w}</div>
             ))}
-            <div style={{ fontSize: 12, color: ink(.5), margin: '10px 0 14px' }}>Batch {result.batchId} · {result.reportDate}</div>
+            <div style={{ fontSize: 12, color: txt(.5), margin: '10px 0 14px' }}>Batch {result.batchId} · {result.reportDate}</div>
             <Link href={`/dashboard?date=${result.reportDate}`} style={{ ...BTN, display: 'inline-block', padding: '11px 22px', fontSize: 14, background: '#0071E3', color: '#fff', textDecoration: 'none' }}>View dashboard →</Link>
           </div>
         ) : (
@@ -335,7 +348,7 @@ export default function Upload() {
                 background: 'linear-gradient(90deg,#0071E3,#5AC8FA)', transition: 'width .4s ease',
               }} />
             </div>
-            <div style={{ fontSize: 11.5, color: ink(.45), marginTop: 7, textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, color: txt(.45), marginTop: 7, textAlign: 'center' }}>
               Files are parsed and joined in your browser — only the result is sent.
             </div>
           </div>
