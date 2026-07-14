@@ -311,7 +311,7 @@ function SummaryView({ s }) {
   if (s.error || !s.campaign) {
     return (
       <div style={{ padding: '60px 0', textAlign: 'center', color: txt(.5), fontSize: 14 }}>
-        {s.error || 'No reports have been uploaded yet, so there is nothing to summarise.'}
+        {s.error || 'No reports have been uploaded for this date, so there is nothing to summarise.'}
       </div>
     );
   }
@@ -333,19 +333,18 @@ function SummaryView({ s }) {
       {/* ── Hero ── */}
       <div style={{ padding: '44px 0 30px' }}>
         <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '.12em', color: C.blue, textTransform: 'uppercase', marginBottom: 14 }}>
-          Campaign Summary
+          Summary &nbsp;·&nbsp; {s.display || s.date}
         </div>
         <h1 className="print-solid-text" style={{ fontSize: 48, lineHeight: 1.06, fontWeight: 700, letterSpacing: '-.03em', margin: '0 0 16px', maxWidth: 900, background: 'linear-gradient(120deg,#34C759 0%,#0071E3 55%,#5856D6 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
-          {fmtCr(t.recovered)} recovered across {s.trend.length === 1 ? 'the campaign' : `${s.trend.length} reports`}.
+          {fmtCr(t.recovered)} recovered{multi ? ` across ${s.trend.length} days` : ''}.
         </h1>
         <p style={{ fontSize: 17, lineHeight: 1.55, color: txt(.6), maxWidth: 760, margin: 0 }}>
           {fmtInt(t.accounts)} accounts holding {fmtCr(t.sumOut)} — {fmtInt(t.resolved)} resolved ({pct(t.resolutionRatePct)}),
           {' '}{fmtCr(t.outstandingPending)} still open across {fmtInt(t.unresolved)} accounts.
           {multi && (
             <>
-              {' '}These are the figures for the <b>current book</b> — the latest report date. Outstanding is what sits
-              on the book <i>now</i>; it is never summed across dates, because reading the same book twice does not
-              double the debt.
+              {' '}This is the <b>Day Total</b> for {s.display} — every Day below reads the <b>same book</b> against a
+              later status file, so the accounts never change and the money is counted <b>once</b>.
             </>
           )}
         </p>
@@ -429,27 +428,27 @@ function SummaryView({ s }) {
       {/* ── The trend. One row per report date. ── */}
       {multi && (
         <Card span={12} className="print-breakable" style={{ marginBottom: 16 }}>
-          <Title t="Every report, in order" s="Each date is a fresh status pull against the same book — so this is progress, not new money" />
+          <Title t="Every day, in order" s="Each Day re-reads the same book against a later status file — this is progress, not new money" />
           <div className="table-scroll" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Report date', 'Accounts', 'Outstanding', 'Recovered', 'Resolved', 'Resolution', 'Change'].map((h, i) => (
+                  {['Day', 'Accounts', 'Outstanding', 'Recovered', 'Resolved', 'Resolution', 'Change'].map((h, i) => (
                     <th key={h} style={{ textAlign: i ? 'right' : 'left', padding: '9px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.45), borderBottom: `1px solid ${ink(.1)}`, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {s.trend.map((d, i) => (
-                  <tr key={d.date}>
-                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, fontWeight: 600 }}>{d.display}</td>
+                  <tr key={d.id}>
+                    <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, fontWeight: 600 }}>{d.label}</td>
                     <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.accounts)}</td>
                     <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtCr(d.outstanding)}</td>
                     <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: C.green }}>{fmtCr(d.recovered)}</td>
                     <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.resolved)}</td>
                     <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{pct(d.resolutionPct, 1)}</td>
                     <td style={{ padding: '11px 12px', borderBottom: `1px solid ${ink(.06)}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: d.recoveredDelta > 0 ? C.green : ink(.35) }}>
-                      {i === 0 ? '—' : d.sameBook === false ? 'new book' : d.recoveredDelta ? `+${fmtCr(d.recoveredDelta)}` : '—'}
+                      {i === 0 ? '—' : d.sameBook === false ? 'different book' : d.recoveredDelta ? `+${fmtCr(d.recoveredDelta)}` : '—'}
                     </td>
                   </tr>
                 ))}
@@ -457,9 +456,10 @@ function SummaryView({ s }) {
             </table>
           </div>
           <div style={{ fontSize: 11.5, color: txt(.42), marginTop: 10, lineHeight: 1.6 }}>
-            <b>These rows do not add up, and must not be added up.</b> Every date re-reads the same book against a later
-            status file, so a customer who paid on the 4th is still resolved on the 8th. The headline above is the{' '}
-            <b>union</b> of all dates — each account counted once, at its most recent outcome.
+            <b>These rows do not add up, and must not be added up.</b> Every Day re-reads the <b>same</b> accounts
+            against a later status file — a customer who paid on the 4th is still resolved on the 8th. The headline
+            above is the <b>Day Total</b>: each account counted once, at its most recent outcome. Adding the Days
+            together would report the money {s.trend.length} times over.
           </div>
         </Card>
       )}
@@ -512,8 +512,8 @@ function SummaryView({ s }) {
       </Card>
 
       <div style={{ textAlign: 'center', fontSize: 12, color: txt(.4), marginTop: 40, lineHeight: 1.7 }}>
-        Convin × RBL Bank · Campaign Summary · {s.trend.length} report{s.trend.length === 1 ? '' : 's'} ·
-        {' '}Accounts unioned across every date — counted once, at their most recent outcome.
+        Convin × RBL Bank · Summary · {s.display} · {s.trend.length} day{s.trend.length === 1 ? '' : 's'} ·
+        {' '}Each account counted once, at its most recent outcome.
       </div>
     </div>
   );
@@ -544,7 +544,7 @@ export default function Report({ shareToken = null }) {
   const [batchId, setBatchId] = useState(null);
   const [switching, setSwitching] = useState(false);
   const [shareTabs, setShareTabs] = useState([]);
-  const [summary, setSummary] = useState(null);
+  const [summary, setSummary] = useState(null);   // { date, data } for the selected report date
   const [theme, setTheme] = useState('light');
   const [name, setName] = useState('');
 
@@ -655,21 +655,39 @@ export default function Report({ shareToken = null }) {
     try {
       if (id === SUMMARY_ID) {
         setBatchId(id);
-        if (!summary) {
-          const s = await fetch('/api/summary').then((r) => r.json());
-          setSummary(s.error ? { error: s.error } : s);
-        }
+        await loadSummary(manifest?.dates?.[dateIdx]?.date);
         return;
       }
       const p = await fetch(`/api/batch?id=${encodeURIComponent(id)}`).then((r) => r.json());
       setData(p); setBatchId(id); setPage(0);
-    } catch (e) {
+    } catch {
       if (id === SUMMARY_ID) setSummary({ error: 'Could not build the summary.' });
     } finally { setSwitching(false); }
   };
-  const gotoDate = (idx) => {
+
+  /* The Summary is scoped to ONE report date, and is rebuilt whenever the date changes.
+     Cached per date, so flicking between dates is instant after the first look. */
+  const loadSummary = async (iso) => {
+    if (!iso) return;
+    if (summary && summary.date === iso && !summary.error) return;
+    try {
+      const j = await fetch(`/api/summary?date=${encodeURIComponent(iso)}`).then((r) => r.json());
+      setSummary(j.error ? { error: j.error } : j);
+    } catch {
+      setSummary({ error: 'Could not build the summary.' });
+    }
+  };
+  const gotoDate = async (idx) => {
     if (!manifest || idx < 0 || idx >= manifest.dates.length) return;
-    setDateIdx(idx); selectBatch(manifest.dates[idx].dayTotal);
+    setDateIdx(idx);
+    /* If the Summary is open, keep it open — just re-scope it to the new date. Bouncing
+       the user back to Day Total every time they change date would be maddening. */
+    if (batchId === SUMMARY_ID) {
+      setSwitching(true);
+      try { await loadSummary(manifest.dates[idx].date); } finally { setSwitching(false); }
+      return;
+    }
+    selectBatch(manifest.dates[idx].dayTotal);
   };
 
   const logout = async () => { try { await fetch('/api/auth'); window.location.href = '/'; } catch {} };
@@ -1327,11 +1345,10 @@ export default function Report({ shareToken = null }) {
           /* Summary sits to the LEFT of Day Total, and is the only tab that is not
              about the selected date — it is the whole campaign, every date at once. */
           const tabs = [
-            /* "reports", NOT "days". The tabs beside this one are already called Day 1,
-               Day 2 — and those are UPLOADS within ONE date. This counts REPORT DATES.
-               Two different things wearing the same word is how someone ends up reading
-               a number as three days of calling when it is three re-reads of the book. */
-            { id: SUMMARY_ID, label: 'Summary', meta: nDates === 1 ? 'all reports' : `${nDates} reports` },
+            /* The Summary covers THIS DATE, assembled from its Days. The count is the
+               number of Days under the selected date — the same things the tabs beside
+               it are named after, so the word finally means one thing. */
+            { id: SUMMARY_ID, label: 'Summary', meta: `${day.uploads.length} day${day.uploads.length === 1 ? '' : 's'}` },
             { id: day.dayTotal, label: 'Day Total', meta: `${fmtInt(day.rowCount)} accounts` },
             ...day.uploads.map((u) => ({ id: u.id, label: dayLabel(u), meta: u.time || `${fmtInt(u.rowCount)} rows` }))];
           return (

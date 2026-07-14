@@ -86,125 +86,54 @@ function pack(rowsArr, total, page, size, filters) {
   return { header: ROWS_HEADER, rows: rowsArr, total, page, totalPages: Math.max(1, Math.ceil(total / size)), filters };
 }
 
-/* ── THE CAMPAIGN SUMMARY ───────────────────────────────────────────────────────
+/* ── THE SUMMARY, FOR ONE REPORT DATE ─────────────────────────────────────────
  *
- * Every report date is a re-pull of the SAME book: one CYC file, joined against a
- * status file pulled on a later and later day. The accounts do not change. The
- * outcomes do.
+ * The Summary describes ONE report date, assembled from its Days — Day 1, Day 2, Day 3.
  *
- * So the campaign total is NOT the sum of the days. Add "recovered" across five report
- * dates and you report five times the money — arithmetically defensible, visually
- * plausible, and utterly false. It is the number an exec repeats out loud, which makes
- * it the worst possible place for that bug. It already shipped once at the day level:
- * three uploads of a ₹13 Cr book produced a ₹65 Cr "Day Total".
+ * WHY THIS SHAPE, AND NOT A ROLL-UP ACROSS DATES.
+ * Within a date, the Days are the SAME book read against progressively later status
+ * files: the CYC file is uploaded once, then joined against the 4 July status, the 5th,
+ * the 6th, the 8th. The accounts never change. The outcomes do. So the Days form a
+ * genuine time series — recovery climbing as the bank's own file catches up — and that
+ * is exactly the story worth telling.
  *
- * Same rule as Day Total, one level up:
+ * Across DATES it is a different matter: those can be entirely different CYC cycles,
+ * with different customers. Rolling them into one headline made "total outstanding"
+ * grow every time a new book arrived, which is the number an exec calls wrong on sight.
+ * We are not doing that any more.
  *
- *     the campaign is the UNION of accounts across every date, NEWEST DATE WINS.
- *
- * Union, not sum. Re-pull the same book ten times and the money does not move. Send a
- * genuinely new cycle and its accounts are added, because they are new accounts. Both
- * are correct and neither needs a special case.
- *
- * Computed on request rather than stored: it spans every date, so any upload
- * invalidates it, and a cached campaign roll-up that silently went stale would be
- * exactly the class of bug this app exists to refuse.
+ * THE HEADLINE IS THE DAY TOTAL, and it is already computed and stored — the union of
+ * the date's uploads, newest status winning. So outstanding is the book's outstanding,
+ * once, and re-uploading the same book cannot move it.
  * ─────────────────────────────────────────────────────────────────────────────── */
-export async function campaignSummary() {
-  const { Aggregator } = await import('./aggregate.mjs');
+export async function dateSummary(iso) {
   const { buildSummary } = await import('./summary.mjs');
 
   const man = await manifest();
-  const dates = [...(man.dates || [])].sort((a, b) => (a.date < b.date ? -1 : 1)); // OLDEST first
-
+  const dates = man.dates || [];
   if (!dates.length) return { version: 1, days: 0, trend: [], campaign: null, findings: [], actions: [] };
 
-  // Each day's stored Day Total — cheap, already computed, drives the trend line.
+  const day = dates.find((d) => d.date === iso) || dates[0];
+
+  /* The Day Total. Already the union of this date's uploads — nothing to recompute, and
+     nothing that can double. */
+  const campaign = await batchPayload(day.dayTotal);
+  if (!campaign) return { version: 1, days: 0, trend: [], campaign: null, findings: [], actions: [] };
+
+  /* One row per Day. Sorted by id (…__u1, __u2, …) so Day 1 comes before Day 2 — never
+     by upload time, which would reorder the series if a day were re-uploaded later. */
+  const uploads = [...(day.uploads || [])].sort((a, b) => String(a.id).localeCompare(String(b.id)));
   const days = [];
-  for (const d of dates) {
-    const payload = await batchPayload(d.dayTotal);
-    if (payload) days.push({ date: d.date, display: d.display, payload });
-  }
-
-  /* ── THE CURRENT BOOK ────────────────────────────────────────────────────────
-   *
-   * OUTSTANDING IS A STOCK, NOT A FLOW.
-   *
-   * It is the debt sitting on a book at a moment in time. You do not add a stock to
-   * itself across time, any more than you add January's bank balance to February's and
-   * call it your net worth. Every report date re-reads the book; the debt does not
-   * double because you looked at it twice.
-   *
-   * The union (below) is still exactly right for deduplicating the SAME accounts across
-   * dates — that is what stops a re-read from doubling the money. But if a genuinely NEW
-   * cycle arrives, with different account numbers, the union ADDS it, and the headline
-   * grows. Arithmetically that is defensible. As a number an exec reads off a slide it
-   * is wrong: "total outstanding" is understood to mean "what is on the book", and the
-   * book is the latest one.
-   *
-   * So the headline is the LATEST report date. Anything from an earlier cycle that is
-   * not in the current book is reported SEPARATELY, as carry-over, and never folded in.
-   * Nothing is hidden and nothing is summed that should not be.
-   * ─────────────────────────────────────────────────────────────────────────── */
-  const latestDate = dates[dates.length - 1];
-  const latestRows = await rowsOfDate(latestDate.date);
-  if (!latestRows.length) {
-    return { version: 1, days: days.length, trend: [], campaign: null, findings: [], actions: [] };
-  }
-
-  const latestByAccount = new Map();
-  for (const r of latestRows) {
-    const k = String(r.account_no ?? '').trim();
-    if (k) latestByAccount.set(k, r);
-  }
-
-  const agg = new Aggregator();
-  for (const r of latestByAccount.values()) agg.add(r);
-  const campaign = agg.payload(latestDate.display);
-
-  /* Carry-over: accounts we worked on an EARLIER date that are not in the current book.
-     If every date is a re-read of the same cycle this is zero and nothing is shown. If a
-     new cycle has started, it is the previous cycle — visible, counted, and kept out of
-     the headline. */
-  const carry = { accounts: 0, outstanding: 0, recovered: 0, dates: [] };
-  const seen = new Set(latestByAccount.keys());
-  for (let i = 0; i < dates.length - 1; i++) {
-    const d = dates[i];
-    let n = 0;
-    for (const r of await rowsOfDate(d.date)) {
-      const k = String(r.account_no ?? '').trim();
-      if (!k || seen.has(k)) continue;
-      seen.add(k);
-      n++;
-      carry.accounts++;
-      carry.outstanding += Number(r.total_outstanding || 0);
-      if (String(r.status || '').trim().toLowerCase() === 'resolved') {
-        carry.recovered += Number(r.total_outstanding || 0);
-      }
+  for (const u of uploads) {
+    const payload = await batchPayload(u.id);
+    if (payload) {
+      days.push({
+        id: u.id,
+        label: String(u.label || '').replace(/^Upload\b/i, 'Day') || 'Day',
+        payload,
+      });
     }
-    if (n) carry.dates.push({ date: d.date, display: d.display, accounts: n });
   }
 
-  return buildSummary({ campaign, days, carry: carry.accounts ? carry : null });
-}
-
-/** Canonical rows for one report date. Postgres or the local files — same shape out. */
-async function rowsOfDate(iso) {
-  if (hasDb()) {
-    const { forEachRowOfDate } = await import('./db.mjs');
-    const out = [];
-    await forEachRowOfDate(iso, (r) => out.push(r));
-    return out;
-  }
-  const { readdir } = await import('node:fs/promises');
-  const dir = path.join(DATA(), 'batches');
-  let files = [];
-  try {
-    files = (await readdir(dir)).filter((f) => f.startsWith(`${iso}__u`) && f.endsWith('.canon.json')).sort();
-  } catch { return []; }
-  const out = [];
-  for (const f of files) {
-    try { out.push(...await readJson(path.join(dir, f))); } catch { /* a half-written upload; skip it */ }
-  }
-  return out;
+  return buildSummary({ campaign, days, date: day.date, display: day.display });
 }

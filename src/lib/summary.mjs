@@ -1,38 +1,30 @@
 /* ─────────────────────────────────────────────────────────────────────────────
- * THE CAMPAIGN SUMMARY — every day, in one view.
+ * THE SUMMARY — one report date, told through its Days.
+ *
+ * Day 1, Day 2, Day 3 are the SAME book read against progressively later status files:
+ * RBL sends the CYC book once, and we join it against the status pulled on the 4th, then
+ * the 5th, then the 8th. The accounts never change. The outcomes do.
+ *
+ * That makes the Days a real time series — recovery climbing as the bank's own file
+ * catches up — which is the single most useful chart in the product.
  *
  * ───────────────────────────────────────────────────────────────────────────
- * THE ONE THING THAT MATTERS HERE: THE MONEY MUST NOT DOUBLE.
+ * THE ONE THING THAT MATTERS: THE MONEY MUST NOT DOUBLE.
  * ───────────────────────────────────────────────────────────────────────────
  *
- * Every report date is a re-pull of the SAME book. RBL sends the CYC file once;
- * we join it against a status file pulled on the 4th, then the 5th, then the 8th.
- * The accounts do not change. The outcomes do.
+ * Because every Day re-reads the SAME accounts, adding them up reports the money once
+ * per Day. Five Days would be 5x the recovery on a ₹55 Cr book — arithmetically
+ * defensible, visually plausible, renders beautifully, and completely false. It is the
+ * number an exec repeats out loud in front of the client.
  *
- * So a campaign total is NOT the sum of the days. Add up "recovered" across five
- * report dates and you report five times the money — a number that is arithmetically
- * defensible, visually plausible, and completely false. That exact bug already shipped
- * once at the day level (three uploads of one book produced ₹65 Cr instead of ₹13 Cr),
- * and it is far more dangerous here, because a campaign roll-up is the number an exec
- * repeats out loud.
+ * That bug already shipped once: three uploads of a ₹13 Cr book produced a ₹65 Cr
+ * "Day Total". So the headline here is the DAY TOTAL — already stored, already the union
+ * of the date's Days with the newest status winning. Outstanding is the book's
+ * outstanding, once. Re-upload the same book ten times and it does not move.
  *
- * The rule, in two parts:
- *
- *   1. Within a date, and across re-reads of the same book: UNION by account, newest
- *      wins. Re-pull the same book ten times and the money does not move.
- *
- *   2. The HEADLINE is the CURRENT BOOK — the latest report date. Outstanding is a
- *      STOCK: the debt on the book right now. You do not add a stock to itself across
- *      time, any more than you add January's bank balance to February's. A genuinely new
- *      cycle does not make the outstanding bigger; it REPLACES the book. The previous
- *      cycle is reported separately, as carry-over, and never folded into the total.
- *
- * This file does NOT do the union — backend.mjs does, because only it can reach the
- * rows. This file takes the already-unioned campaign payload plus each day's stored
- * Day Total, and turns them into a trend, a set of findings, and a work queue.
- * Everything below is derived from the data. Nothing is asserted, and nothing is
- * written by a language model — which is precisely why it is safe to put in front of
- * a bank.
+ * The trend below shows each Day separately. Those rows do not add up, and must not be
+ * added up. Everything here is computed from the data. Nothing is asserted, and nothing
+ * is written by a language model — which is precisely why it is safe in front of a bank.
  * ───────────────────────────────────────────────────────────────────────────── */
 
 export const SUMMARY_VERSION = 1;
@@ -40,16 +32,16 @@ export const SUMMARY_VERSION = 1;
 const pctOf = (a, b) => (b ? (a / b) * 100 : 0);
 const round1 = (n) => Math.round(n * 10) / 10;
 
-/** One row per report date, oldest first. Straight off each day's stored Day Total. */
+/** One row per Day, in order. Straight off each Day's stored payload. */
 export function buildTrend(days) {
   return days
     .filter((d) => d.payload?.agg?.totals)
-    .map(({ date, display, payload }) => {
+    .map(({ id, label, payload }, i) => {
       const t = payload.agg.totals;
       const ai = payload.agg.ai || {};
       return {
-        date,
-        display,
+        id,
+        label: label || `Day ${i + 1}`,
         cycFile: payload.meta?.cycFile || '',
         accounts: t.accounts,
         outstanding: t.sumOut,
@@ -60,20 +52,18 @@ export function buildTrend(days) {
         attempts: ai.attempts || 0,
         connected: ai.connected || 0,
         talkMinutes: ai.talkMinutes || 0,
-        // How much this day's status pull moved the needle vs the one before it —
-        // filled in below, because it needs the neighbour.
         recoveredDelta: 0,
         resolvedDelta: 0,
       };
     })
-    .sort((a, b) => (a.date < b.date ? -1 : 1))
     .map((d, i, all) => {
-      if (i === 0) return d;
+      if (i === 0) return { ...d, sameBook: true };
       const prev = all[i - 1];
-      /* Only a meaningful delta if it is the SAME book being re-read. A different CYC
-         file is a different set of accounts, and "recovered went up ₹20 Cr" would then
-         be measuring a new book, not progress. Say nothing rather than say that. */
-      const sameBook = prev.cycFile && d.cycFile && prev.cycFile === d.cycFile;
+      /* The Days of one report date are the same CYC book by construction. If a
+         different CYC file somehow appears under the same date, the delta would be
+         measuring a different set of accounts and calling it progress. Say nothing
+         rather than say that. */
+      const sameBook = !prev.cycFile || !d.cycFile || prev.cycFile === d.cycFile;
       return sameBook
         ? { ...d, recoveredDelta: d.recovered - prev.recovered, resolvedDelta: d.resolved - prev.resolved, sameBook: true }
         : { ...d, sameBook: false };
@@ -233,36 +223,34 @@ export function buildActions(campaign) {
 }
 
 /**
- * Roll it all together.
+ * Roll it all together, for ONE report date.
  *
- * `campaign` is the CURRENT BOOK — the latest report date. Not a union across dates, and
- * emphatically not a sum of them. Outstanding is a stock: it is what sits on the book
- * right now, and it does not grow because you read the book twice. See backend.mjs.
+ * `campaign` is the DAY TOTAL — already the union of this date's Days, newest status
+ * winning. Not a sum of them. Outstanding is the book's outstanding, once.
  *
- * `carry` is anything worked on an earlier date that is NOT in the current book — the
- * previous cycle, if a new one has started. Reported beside the headline, never inside
- * it. Null when every date is a re-read of the same book, which is the normal case.
+ * `days` are Day 1, Day 2, Day 3 … in order.
  */
-export function buildSummary({ campaign, days, carry = null }) {
+export function buildSummary({ campaign, days, date = '', display = '' }) {
   const trend = buildTrend(days);
   const first = trend[0];
   const last = trend[trend.length - 1];
 
-  /* Movement is only honest between two reads of the SAME book. Across different CYC
-     cycles it would be comparing two different sets of accounts and calling the
-     difference progress. */
-  const comparable = first && last && first !== last && first.cycFile && first.cycFile === last.cycFile;
+  /* Movement between the FIRST and LAST Day of this date. Honest by construction: they
+     are the same book, so the difference is the bank's status file catching up — which
+     is exactly what we want to show. */
+  const comparable = first && last && first !== last && last.sameBook;
 
   return {
     version: SUMMARY_VERSION,
     generatedAt: new Date().toISOString(),
+    date,
+    display,
     days: trend.length,
     trend,
-    carry,
     movement: comparable
       ? {
-        from: first.display,
-        to: last.display,
+        from: first.label,
+        to: last.label,
         recovered: last.recovered - first.recovered,
         resolved: last.resolved - first.resolved,
         resolutionPts: last.resolutionPct - first.resolutionPct,

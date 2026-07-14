@@ -54,92 +54,59 @@ const ok = (label, cond, detail = '') => {
   console.log(`✘ ${label}\n    ${detail}`);
 };
 
-/* ── 1. THE BIG ONE. The same 1,000-account book, re-pulled on three dates.
-       100 → 250 → 600 accounts resolve. The book is ₹10 Cr. ── */
+/* ── 1. THE BIG ONE. One report date, the SAME 1,000-account book, read on 3 Days
+       against progressively later status files. 100 -> 250 -> 600 accounts resolve.
+       The book is Rs 10 Cr. ── */
 {
   const book = (n) => Array.from({ length: 1000 }, (_, i) => row('A' + i, i < n));
   const books = [book(100), book(250), book(600)];
   const days = books.map((rows, i) => ({
-    date: `2026-07-0${4 + i}`, display: `${4 + i} July 2026`, payload: pay(rows, `${4 + i} July 2026`, CYC),
+    id: `2026-07-03__u${i + 1}`, label: `Day ${i + 1}`, payload: pay(rows, `Day ${i + 1}`, CYC),
   }));
-  // Same book three times: the union and the latest book are the same 1,000 accounts.
-  const campaign = pay(union(books), 'campaign', CYC);
-  const s = buildSummary({ campaign, days });
+  // The Day Total: the union of the Days, newest status winning. Never their sum.
+  const campaign = pay(union(books), '3 July 2026', CYC);
+  const s = buildSummary({ campaign, days, date: '2026-07-03', display: '3 July 2026' });
   const t = s.campaign.agg.totals;
 
   const naive = s.trend.reduce((a, d) => a + d.recovered, 0);
 
-  ok('re-reading one book never multiplies the accounts', t.accounts === 1000,
-    `got ${t.accounts}, expected 1,000 (a sum across the 3 dates would give 3,000)`);
-  ok('re-reading one book never multiplies the money', t.recovered === 600 * 100000,
-    `got ₹${(t.recovered / 1e7).toFixed(2)} Cr, expected ₹6.00 Cr (the naive sum gives ₹${(naive / 1e7).toFixed(2)} Cr)`);
+  ok('the Day Total never multiplies the accounts', t.accounts === 1000,
+    `got ${t.accounts}, expected 1,000 (summing the 3 Days would give 3,000)`);
+  ok('the Day Total never multiplies the money', t.recovered === 600 * 100000,
+    `got Rs ${(t.recovered / 1e7).toFixed(2)} Cr, expected Rs 6.00 Cr (the naive sum gives Rs ${(naive / 1e7).toFixed(2)} Cr)`);
+  ok('outstanding is the book, once', t.sumOut === 1000 * 100000,
+    `got Rs ${(t.sumOut / 1e7).toFixed(2)} Cr, expected Rs 10.00 Cr`);
   ok('recovered can never exceed the book', t.recovered <= t.sumOut,
     `recovered ${t.recovered} > outstanding ${t.sumOut}`);
   ok('resolved can never exceed the accounts', t.resolved <= t.accounts,
     `resolved ${t.resolved} > accounts ${t.accounts}`);
   ok('the naive sum WOULD have been wrong (so this test is worth something)', naive > t.recovered,
-    'the sum and the union agree, so this book does not actually exercise the bug');
-  ok('movement is measured first→last', s.movement && s.movement.resolved === 500,
-    `movement.resolved = ${s.movement?.resolved}, expected 500 (600 − 100)`);
-  ok('the trend keeps one row per date, oldest first',
-    s.trend.length === 3 && s.trend[0].date < s.trend[2].date,
-    `trend = ${JSON.stringify(s.trend.map((d) => d.date))}`);
+    'the sum and the Day Total agree, so this book does not exercise the bug');
+  ok('the trend is one row per Day, in order',
+    s.trend.length === 3 && s.trend[0].label === 'Day 1' && s.trend[2].label === 'Day 3',
+    `trend = ${JSON.stringify(s.trend.map((d) => d.label))}`);
+  ok('movement is measured Day 1 -> Day 3', s.movement && s.movement.resolved === 500,
+    `movement.resolved = ${s.movement?.resolved}, expected 500 (600 - 100)`);
+  ok('movement is labelled by Day, not by date',
+    s.movement?.from === 'Day 1' && s.movement?.to === 'Day 3',
+    `movement = ${JSON.stringify(s.movement)}`);
+  ok('the summary is scoped to the date it was asked for', s.date === '2026-07-03',
+    `date = ${s.date}`);
+  ok('every Day sees the same accounts (they are the same book)',
+    s.trend.every((d) => d.accounts === 1000),
+    `accounts per Day = ${JSON.stringify(s.trend.map((d) => d.accounts))}`);
+  ok('recovery climbs across the Days', s.trend[0].recovered < s.trend[1].recovered && s.trend[1].recovered < s.trend[2].recovered,
+    `recovered per Day = ${JSON.stringify(s.trend.map((d) => d.recovered))}`);
 }
 
-/* ── 2. A genuinely NEW cycle. Its accounts must NOT be added to the headline.
-       Outstanding is a STOCK — the debt on the book right now. Adding last cycle's
-       outstanding to this cycle's makes the total grow every time RBL sends a new
-       book, which is the number an exec would call wrong on sight. The previous cycle
-       is reported as CARRY-OVER, beside the headline, never inside it. ── */
+/* ── 2. A single Day. No movement can be claimed from one reading. ── */
 {
-  const july = Array.from({ length: 500 }, (_, i) => row('J' + i, i < 100));      // ₹5 Cr book
-  const august = Array.from({ length: 400 }, (_, i) => row('G' + i, i < 50));     // ₹4 Cr book
-  const days = [
-    { date: '2026-07-04', display: '4 July 2026', payload: pay(july, '4 July 2026', CYC) },
-    { date: '2026-08-04', display: '4 August 2026', payload: pay(august, '4 August 2026', OTHER) },
-  ];
-
-  // Exactly what backend.mjs now does: the headline is the LATEST book.
-  const campaign = pay(august, '4 August 2026', OTHER);
-  const carry = {
-    accounts: july.length,
-    outstanding: july.reduce((a, r) => a + r.total_outstanding, 0),
-    recovered: july.filter((r) => r.status === 'Resolved').reduce((a, r) => a + r.total_outstanding, 0),
-    dates: [{ date: '2026-07-04', display: '4 July 2026', accounts: july.length }],
-  };
-  const s = buildSummary({ campaign, days, carry });
-  const t = s.campaign.agg.totals;
-
-  ok('a new cycle does NOT inflate the headline account count', t.accounts === 400,
-    `got ${t.accounts}, expected 400 (the current book). A union would have said 900.`);
-  ok('a new cycle does NOT inflate total outstanding', t.sumOut === 400 * 100000,
-    `got ₹${(t.sumOut / 1e7).toFixed(2)} Cr, expected ₹4.00 Cr. A union would have said ₹9.00 Cr.`);
-  ok('the headline never exceeds the latest book', t.sumOut <= 400 * 100000,
-    'outstanding grew beyond the current book — a stock was summed across time');
-  ok('the previous cycle is REPORTED, not discarded', s.carry?.accounts === 500,
-    `carry = ${JSON.stringify(s.carry)}`);
-  ok('the previous cycle keeps its own outstanding', s.carry?.outstanding === 500 * 100000,
-    `carry.outstanding = ${s.carry?.outstanding}`);
-  ok('no movement is claimed across two different books', s.movement === null,
-    'movement was reported between two different CYC files — that is not progress, it is a different book');
-  ok('the trend marks the new book rather than inventing a delta',
-    s.trend[1].sameBook === false && !s.trend[1].recoveredDelta,
-    `trend[1] = ${JSON.stringify(s.trend[1])}`);
-}
-
-/* ── 2b. The SAME book re-read must produce NO carry-over at all. If it did, we would
-       be double-reporting the very accounts the union exists to deduplicate. ── */
-{
-  const book = (n) => Array.from({ length: 1000 }, (_, i) => row('A' + i, i < n));
-  const days = [4, 5, 8].map((d, i) => ({
-    date: `2026-07-0${d}`, display: `${d} July 2026`,
-    payload: pay(book([100, 250, 600][i]), `${d} July 2026`, CYC),
-  }));
-  const s = buildSummary({ campaign: pay(book(600), '8 July 2026', CYC), days, carry: null });
-  ok('re-reading the same book produces no carry-over', s.carry === null, `carry = ${JSON.stringify(s.carry)}`);
-  ok('re-reading the same book leaves outstanding unchanged',
-    s.campaign.agg.totals.sumOut === 1000 * 100000,
-    `got ₹${(s.campaign.agg.totals.sumOut / 1e7).toFixed(2)} Cr, expected ₹10.00 Cr`);
+  const book = Array.from({ length: 500 }, (_, i) => row('A' + i, i < 120));
+  const days = [{ id: '2026-07-03__u1', label: 'Day 1', payload: pay(book, 'Day 1', CYC) }];
+  const s = buildSummary({ campaign: pay(book, '3 July 2026', CYC), days, date: '2026-07-03', display: '3 July 2026' });
+  ok('one Day claims no movement', s.movement === null, `movement = ${JSON.stringify(s.movement)}`);
+  ok('one Day still reports the book', s.campaign.agg.totals.accounts === 500,
+    `accounts = ${s.campaign.agg.totals.accounts}`);
 }
 
 /* ── 3. Degenerate books. None of these should throw, and none should lie. ── */
@@ -149,15 +116,15 @@ const ok = (label, cond, detail = '') => {
   })(), 'buildSummary threw on an empty book');
 
   const none = Array.from({ length: 200 }, (_, i) => row('A' + i, false));
-  const s = buildSummary({ campaign: pay(none, 'x', CYC), days: [{ date: '2026-07-04', display: 'x', payload: pay(none, 'x', CYC) }] });
+  const s = buildSummary({ campaign: pay(none, 'x', CYC), days: [{ id: 'x__u1', label: 'Day 1', payload: pay(none, 'x', CYC) }] });
   ok('a book where nobody resolved reports ₹0, not NaN',
     s.campaign.agg.totals.recovered === 0 && Number.isFinite(s.campaign.agg.totals.resolutionRatePct),
     `recovered=${s.campaign.agg.totals.recovered} rate=${s.campaign.agg.totals.resolutionRatePct}`);
-  ok('a single report date claims no movement', s.movement === null,
-    'movement was reported from one date — there is nothing to compare it to');
+  ok('a single Day claims no movement', s.movement === null,
+    'movement was reported from one Day — there is nothing to compare it to');
 
   const all = Array.from({ length: 200 }, (_, i) => row('A' + i, true));
-  const s2 = buildSummary({ campaign: pay(all, 'x', CYC), days: [{ date: '2026-07-04', display: 'x', payload: pay(all, 'x', CYC) }] });
+  const s2 = buildSummary({ campaign: pay(all, 'x', CYC), days: [{ id: 'x__u1', label: 'Day 1', payload: pay(all, 'x', CYC) }] });
   ok('a fully-resolved book leaves an empty work queue, not a negative one',
     s2.openAccounts === 0 && s2.openAmount === 0 && s2.actions.every((a) => a.count > 0),
     `open=${s2.openAccounts} amount=${s2.openAmount}`);
