@@ -10,7 +10,7 @@
     "seed": "node seed_local.mjs",
     "db:setup": "node migrate.mjs",
     "ingest": "node ingest.mjs",
-    "rebuild": "node rebuild_local.mjs",
+    "rebuild": "node rebuild.mjs",
     "eval": "node eval_model.mjs",
     "eval:reports": "node evals/generate_reports.mjs",
     "eval:export": "node evals/export_cases.mjs && node evals/export_sweep.mjs",
@@ -29,7 +29,8 @@
     "test:all": "node evals/stress_keys.mjs && node evals/stress_merge_rows.mjs && node evals/stress_test.mjs",
     "push": "node scripts/push.mjs",
     "db:schema": "psql \"$DATABASE_URL\" -f db/postgres/schema.sql",
-    "dev:next": "next dev"
+    "dev:next": "next dev",
+    "rebuild:local": "node rebuild_local.mjs"
   },
   "dependencies": {
     "next": "16.2.10",

@@ -106,6 +106,6 @@ npm run dev          # app + tunnel, one terminal
 npm run test:all     # 462 invariant checks
 npm run check:pii    # refuses to let customer data reach a commit
 npm run push         # parse 3 files locally → straight into Postgres
-npm run rebuild      # regenerate stored reports after an aggregator change
+npm run rebuild      # regenerate stored reports after an aggregator change (Postgres or local)
 npm run diagnose     # "why won't my files join?"
 ```
