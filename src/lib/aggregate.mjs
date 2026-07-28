@@ -3,6 +3,7 @@
 // Mirrors generate_convin_data.py exactly (Resolved => full outstanding recovered).
 
 import { BAND_ORDER, isResolved } from './normalize.mjs';
+import { decodeHist } from './calllog.mjs';
 import { PAYLOAD_VERSION } from './payload_version.mjs';
 import {
   featurize, trainPropensity, score, computeLifts,
@@ -46,6 +47,26 @@ const bump = (parent, date, fields) => {
 const durBucket = (s) => (s <= 0 ? 'Not connected' : s < 30 ? '<30s' : s < 60 ? '30–60s' : s < 120 ? '1–2 min' : s < 300 ? '2–5 min' : '>5 min');
 const attBand = (a) => (a <= 3 ? '1–3' : a <= 6 ? '4–6' : a <= 9 ? '7–9' : a <= 12 ? '10–12' : '13+');
 const U = (x) => String(x ?? '').trim().toUpperCase();
+
+/* Attempt intensity across the book. Deliberately NOT attBand() above: that one has no
+   zero bucket (attBand(0) returns "1–3"), which is harmless where it is used — the dial
+   efficiency chart only ever sees dialled accounts — and completely wrong here, where
+   the whole point is that the CYC book contains accounts the AI never rang. */
+const INTENSITY_ORDER = ['Never dialled', '1–3', '4–6', '7–9', '10–12', '13+'];
+const intensityBand = (a) => (a <= 0 ? 'Never dialled' : attBand(a));
+/* Connected-call intensity. "Reached once" is its own bucket because reaching a customer
+   at all is the step that moves the outcome — lumping it with 2–3 hides that. */
+const CONTACT_ORDER = ['Never reached', '1', '2–3', '4–6', '7+'];
+const contactBand = (c) => (c <= 0 ? 'Never reached' : c === 1 ? '1' : c <= 3 ? '2–3' : c <= 6 ? '4–6' : '7+');
+
+/** An account number, reduced to something that identifies a ROW without identifying a
+ *  PERSON. Six of nineteen digits, and no name anywhere near it. This is what the Top-20
+ *  table prints: the collections team can match it against their own list, and a leaked
+ *  screenshot tells a stranger nothing. */
+const maskAccount = (a) => {
+  const d = String(a ?? '').replace(/\D/g, '');
+  return d ? `•••• ${d.slice(-6)}` : '—';
+};
 const cr = (x) => (Math.abs(x) >= 1e7 ? `₹${(x / 1e7).toFixed(2)} Cr` : Math.abs(x) >= 1e5 ? `₹${(x / 1e5).toFixed(2)} L` : `₹${Math.round(x).toLocaleString('en-IN')}`);
 
 /* Business inputs that CANNOT be derived from a collections CSV — they come from
@@ -107,6 +128,38 @@ export class Aggregator {
     // Segment breakdown for the dashboard — the exec asked to SEE this, not just
     // have the model use it.
     this.seg = new Map();
+
+    /* ── FROM THE AI CALL LOG ───────────────────────────────────────────────────
+     * Every counter below is rolled from PER-ACCOUNT fields, never from attempt rows.
+     * That is what makes the curves survive the Day Total union: re-uploading the same
+     * book replaces the account, so its hours and its attempts are counted once, and
+     * the hour-of-day and attempt-conversion curves come out identical. Had these been
+     * pre-computed at upload time and merged, two uploads of one book would have
+     * doubled every dial on the chart while the money stayed correct — a chart
+     * disagreeing with the headline beside it, which is the worst kind of wrong.        */
+    this.logged = 0;             // accounts with at least one attempt in the call log
+    /* Dials and answers belonging to accounts that carry call-log data, as distinct from
+       this.attempts / this.connected, which are the WHOLE book. They differ in exactly one
+       situation and it is a real one: a Day Total that unions a day uploaded with the old
+       per-account lead export against a day uploaded with the per-attempt call log. The
+       hour and attempt curves can only be drawn over the accounts that have attempts, so
+       the section reports its own denominator rather than borrowing the book's. */
+    this.logAttempts = 0; this.logConnected = 0;
+    this.hour = new Map();       // 'HH'   -> { attempts, connected }
+    this.line = new Map();       // last-4 -> { attempts, connected }
+    this.attN = new Map();       // attempt no -> { attempts, connected, firstPaid, firstPaidResolved }
+    this.maxAttemptSeen = 0;
+    this.vmCalls = 0; this.vmSecs = 0; this.humanReached = 0;
+    this.ptpAcc = 0; this.ptpRes = 0; this.ptpOut = 0; this.ptpRec = 0;
+    this.cmpAcc = 0; this.cmpRes = 0; this.cmpOut = 0;
+    this.dncAcc = 0; this.dncRes = 0; this.dncRedial = 0; this.dncRedialDials = 0;
+    this.dncMaxAfter = 0; this.dncCmp = 0;
+    this.refAcc = 0; this.refRes = 0;
+    this.paidAcc = 0; this.paidRes = 0; this.firstPaidKnown = 0;
+    this.intensity = new Map();  // attempts band  -> { accounts, resolved }
+    this.contact = new Map();    // connects band  -> { accounts, resolved }
+    // AI-only vs AI+agency. One value in every book we have seen; wired anyway.
+    this.agency = new Map();
   }
 
   _em(kind, key, resolved) {
@@ -123,12 +176,86 @@ export class Aggregator {
     e.count++; e.outstanding += o; e.minDue += r.minimum_amount_due; e.attempts += r.ai_attempts; e.connected += r.ai_connected_calls;
     if (resolved) { e.resolved++; e.recovered += o; } else e.unresolved++;
   }
+  /* Top-20 by exposure. NO CUSTOMER NAME — not here, not in the payload, not in the
+     printed PDF, not in a share link. It used to carry r.customer_name, which meant the
+     one table an exec is most likely to screenshot was also the only place in the
+     deliverable holding a bank's customers by name. The masked account reference does
+     the job it was actually there for: the collections team can look it up in their own
+     system, and nobody else can look up anybody. */
   _pushTop(r, o) {
     const t = this.top;
     if (t.length >= 20 && o <= t[t.length - 1].o) return;
-    const item = { o, name: r.customer_name, state: r.primary_state || '—', connected: r.ai_connected_calls, ptp: U(r.promise_flag) === 'YES', status: r.status };
+    const item = { o, ref: maskAccount(r.account_no), state: r.primary_state || '—', connected: r.ai_connected_calls, ptp: U(r.promise_flag) === 'YES', status: r.status };
     let i = t.length; while (i > 0 && t[i - 1].o < o) i--;
     t.splice(i, 0, item); if (t.length > 20) t.length = 20;
+  }
+
+  /* ── The call log, folded in ───────────────────────────────────────────────────
+     Reads ONLY the per-account fields written by calllog.mjs. A row from a book
+     uploaded before the call log existed has none of them, and every read below
+     defaults to zero — so an old report aggregates exactly as it always did and the
+     new section simply reports itself absent. */
+  _callLog(r, o, resolved) {
+    const maxAttempt = Number(r.max_attempt) || 0;
+    if (maxAttempt <= 0 && !String(r.attempt_mask || '')) return;
+    this.logged++;
+    this.logAttempts += Number(r.ai_attempts) || 0;
+    this.logConnected += Number(r.ai_connected_calls) || 0;
+    if (maxAttempt > this.maxAttemptSeen) this.maxAttemptSeen = maxAttempt;
+
+    for (const h of decodeHist(r.attempts_by_hour)) {
+      let e = this.hour.get(h.key);
+      if (!e) { e = { attempts: 0, connected: 0 }; this.hour.set(h.key, e); }
+      e.attempts += h.attempts; e.connected += h.connected;
+    }
+    for (const l of decodeHist(r.outbound_lines)) {
+      let e = this.line.get(l.key);
+      if (!e) { e = { attempts: 0, connected: 0 }; this.line.set(l.key, e); }
+      e.attempts += l.attempts; e.connected += l.connected;
+    }
+
+    /* The attempt mask. '-' means that attempt number does not exist for this account,
+       and skipping it is the whole reason the mask has three states — counting a dial
+       that was never placed would inflate exactly the denominator this curve is made of. */
+    const mask = String(r.attempt_mask || '');
+    for (let i = 0; i < mask.length; i++) {
+      const c = mask[i];
+      if (c !== '0' && c !== '1') continue;
+      const e = this._att(i + 1);
+      e.attempts++; if (c === '1') e.connected++;
+    }
+
+    const fp = Number(r.attempt_first_paid) || 0;
+    if (fp > 0) {
+      const e = this._att(fp);
+      e.firstPaid++; if (resolved) e.firstPaidResolved++;
+      this.firstPaidKnown++;
+    }
+
+    const vm = Number(r.voicemail_calls) || 0;
+    this.vmCalls += vm;
+    this.vmSecs += Number(r.voicemail_seconds) || 0;
+    // Reached by a PERSON, not by an answering machine. A voicemail has an answered
+    // timestamp, so it is a connect by the file's own definition — and it is not a
+    // conversation, and the report says both rather than picking one.
+    if ((Number(r.ai_connected_calls) || 0) > vm) this.humanReached++;
+
+    if (r.ptp_flag) { this.ptpAcc++; this.ptpOut += o; if (resolved) { this.ptpRes++; this.ptpRec += o; } }
+    if (r.complaint_flag) { this.cmpAcc++; this.cmpOut += o; if (resolved) this.cmpRes++; }
+    if (r.refused_flag) { this.refAcc++; if (resolved) this.refRes++; }
+    if (r.dnc_flag) {
+      this.dncAcc++; if (resolved) this.dncRes++;
+      if (r.complaint_flag) this.dncCmp++;
+      const after = Number(r.dials_after_dnc) || 0;
+      if (after > 0) { this.dncRedial++; this.dncRedialDials += after; if (after > this.dncMaxAfter) this.dncMaxAfter = after; }
+    }
+    if (fp > 0 || U(r.paid_flag) === 'YES') { this.paidAcc++; if (resolved) this.paidRes++; }
+  }
+
+  _att(n) {
+    let e = this.attN.get(n);
+    if (!e) { e = { attempts: 0, connected: 0, firstPaid: 0, firstPaidResolved: 0 }; this.attN.set(n, e); }
+    return e;
   }
   add(r) {
     const o = r.total_outstanding, resolved = isResolved(r);
@@ -247,6 +374,30 @@ export class Aggregator {
       if (r.ai_connected_seconds >= 120) { this.oppEngaged.count++; this.oppEngaged.amount += o; }
       if (U(r.paid_flag) === 'YES') { this.oppClaimed.count++; this.oppClaimed.amount += o; }
     } else if (U(r.paid_flag) === 'NO') this.saidNoRes++;
+
+    /* Attempt & contact intensity, over the WHOLE book — including the accounts that
+       were never dialled. Those are the ones a per-lead figure exists to keep honest;
+       drop them and "avg 13 attempts per account" quietly becomes "per account we
+       happened to ring". */
+    const ib = intensityBand(r.ai_attempts);
+    let iv = this.intensity.get(ib);
+    if (!iv) { iv = { accounts: 0, resolved: 0, attempts: 0 }; this.intensity.set(ib, iv); }
+    iv.accounts++; iv.attempts += r.ai_attempts; if (resolved) iv.resolved++;
+
+    const cb = contactBand(r.ai_connected_calls);
+    let cv = this.contact.get(cb);
+    if (!cv) { cv = { accounts: 0, resolved: 0 }; this.contact.set(cb, cv); }
+    cv.accounts++; if (resolved) cv.resolved++;
+
+    // Which cohort worked it (AI-only vs AI + agency). Same shape as the segment map,
+    // so the UI can degrade to "one cohort" using the same branch.
+    const ak = String(r.ai_agency || '').trim() || 'Unspecified';
+    let av = this.agency.get(ak);
+    if (!av) { av = { count: 0, resolved: 0, unresolved: 0, outstanding: 0, recovered: 0, attempts: 0, connected: 0 }; this.agency.set(ak, av); }
+    av.count++; av.outstanding += o; av.attempts += r.ai_attempts; av.connected += r.ai_connected_calls;
+    if (resolved) { av.resolved++; av.recovered += o; } else av.unresolved++;
+
+    this._callLog(r, o, resolved);
   }
 
   /* ── OUTCOME WINDOW ────────────────────────────────────────────────────────────
@@ -315,6 +466,242 @@ export class Aggregator {
       blindOutstanding: sum('outstanding'),
       measurableAccounts: this.N - sum('n'),
       attemptSharePct: this.attempts ? sum('attempts') / this.attempts * 100 : 0,
+    };
+  }
+
+  /* ── WHAT THE CALL LOG CANNOT TELL US ─────────────────────────────────────────
+   *
+   * Shipped IN the payload rather than written into the JSX, because a placeholder that
+   * lives in a component is a placeholder somebody deletes in a hurry and replaces with
+   * a plausible-looking chart. These four were asked for. None of them is in either
+   * file. Saying so, on the page, with the reason, is the deliverable — an empty space
+   * where a metric was expected reads as an oversight, and an invented one is worse
+   * than both.                                                                       */
+  static NOT_MEASURED = [
+    {
+      key: 'tonality',
+      label: 'Tonality / sentiment',
+      why: 'The call log has no tone or sentiment column. "Sense Disposition Reason" is a free-text sentence the model wrote about the call, not a score, and scoring it here would be us grading our own conversations with a number we invented.',
+      need: 'A per-call sentiment or tone score from the speech pipeline.',
+    },
+    {
+      key: 'cash',
+      label: 'Cash actually collected (₹ paid)',
+      why: 'Neither file carries an amount paid. Both carry OUTSTANDING. Every "recovered" figure on this report is the full outstanding of an account RBL\'s status file marked Resolved — the standard measure, and not the same thing as cash received in the period.',
+      need: 'A payment/receipt feed with an amount and a value date.',
+    },
+    {
+      key: 'agent',
+      label: 'Per-agent / per-bot performance',
+      why: 'There is no agent identifier. The only per-call handle is the outbound line it was dialled from, and a line is a trunk, not an agent — an account is rung from a dozen different ones. The outbound-line table is labelled as exactly that, and must not be read as "Agent A beat Agent B".',
+      need: 'An agent_id or bot_version on the call attempt.',
+    },
+    {
+      key: 'wpc',
+      label: 'Wrong-party contact',
+      why: 'No WPC flag exists in the export. It could be guessed at from dispositions like "Message to Third Party", but a compliance number that was inferred is a compliance number that will be wrong in front of a regulator.',
+      need: 'An explicit right-party / wrong-party outcome on the attempt.',
+    },
+  ];
+
+  /* Everything the AI call log makes possible, computed from the PER-ACCOUNT fields so
+     the whole section re-derives correctly on the Day Total union. */
+  _callSection(N, resolved, baseRatePct) {
+    const blank = {
+      present: false, accounts: 0, byHour: [], bestHours: [], byAttempt: [],
+      lines: [], notMeasured: Aggregator.NOT_MEASURED,
+    };
+    if (!this.logged) return blank;
+
+    /* Hour of day. An hour with a handful of dials in it has a connect rate that is
+       noise, and noise sorted descending looks exactly like the best hour of the day —
+       so a thin hour is charted but never crowned. */
+    const hourAttempts = [...this.hour.values()].reduce((a, h) => a + h.attempts, 0);
+    const HOUR_MIN = Math.max(50, Math.round(hourAttempts * 0.02));
+    const byHour = [...this.hour.entries()]
+      .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([hour, h]) => ({
+        hour,
+        attempts: h.attempts,
+        connected: h.connected,
+        connectPct: h.attempts ? h.connected / h.attempts * 100 : 0,
+        sharePct: hourAttempts ? h.attempts / hourAttempts * 100 : 0,
+        thin: h.attempts > 0 && h.attempts < HOUR_MIN,
+      }));
+    const bestHours = byHour.filter((h) => !h.thin)
+      .slice().sort((a, b) => b.connectPct - a.connectPct).slice(0, 3);
+
+    /* Conversion by attempt number. OBSERVED, and labelled as such everywhere it is
+       shown. The dialler stops ringing an account once it resolves, so a late attempt
+       exists only for accounts that had not paid by then: attempts and outcome are not
+       independent, and the falling curve is partly the selection, not the fatigue. We
+       describe the shape. We do not claim an optimal cut-off, because this data cannot
+       identify one — the same discipline the outcome-window guard already applies. */
+    const attNums = [...this.attN.keys()].sort((a, b) => a - b);
+    let cum = 0;
+    const byAttempt = attNums.map((n) => {
+      const e = this.attN.get(n);
+      cum += e.firstPaid;
+      return {
+        attempt: n,
+        dialled: e.attempts,
+        connected: e.connected,
+        connectPct: e.attempts ? e.connected / e.attempts * 100 : 0,
+        firstPaid: e.firstPaid,
+        firstPaidResolved: e.firstPaidResolved,
+        firstPaidPct: e.attempts ? e.firstPaid / e.attempts * 100 : 0,
+        cumFirstPaid: cum,
+        cumFirstPaidPct: this.firstPaidKnown ? cum / this.firstPaidKnown * 100 : 0,
+        thin: e.attempts > 0 && e.attempts < CELL_MIN,
+      };
+    });
+    // Where the curve stops paying for itself: the first attempt by which 90% of all
+    // first-payments had already landed. A description of the observed shape, nothing more.
+    const flattensAt = byAttempt.find((a) => a.cumFirstPaidPct >= 90)?.attempt ?? null;
+    const paidBeyondFlatten = flattensAt === null ? 0
+      : byAttempt.filter((a) => a.attempt > flattensAt).reduce((s, a) => s + a.firstPaid, 0);
+    const dialsBeyondFlatten = flattensAt === null ? 0
+      : byAttempt.filter((a) => a.attempt > flattensAt).reduce((s, a) => s + a.dialled, 0);
+
+    const dialled = this.fAttempted;
+    const reached = this.fConnected;
+    const humanConnected = Math.max(0, this.connected - this.vmCalls);
+
+    return {
+      present: true,
+      accounts: this.logged,
+      neverDialled: N - dialled,
+      /* The curves' own denominator. Equal to intensity.attempts on any book uploaded
+         with a call log; smaller only where a Day Total mixes a call-log day with an
+         older lead-export day, and then the difference is stated rather than papered over. */
+      loggedAttempts: this.logAttempts,
+      loggedConnected: this.logConnected,
+      attemptsWithoutLog: Math.max(0, this.attempts - this.logAttempts),
+
+      byHour,
+      bestHours,
+
+      byAttempt,
+      flattensAt,
+      paidBeyondFlatten,
+      dialsBeyondFlatten,
+      firstPaidAccounts: this.firstPaidKnown,
+      paidAccounts: this.paidAcc,
+      paidResolved: this.paidRes,
+      maxAttempt: this.maxAttemptSeen,
+
+      /* 3 — intensity. Both denominators, both named, because "13 attempts per account"
+         and "11 attempts per account in the book" are different claims. */
+      intensity: {
+        book: N,
+        dialledAccounts: dialled,
+        attempts: this.attempts,
+        connected: this.connected,
+        avgAttemptsPerBookAccount: N ? this.attempts / N : 0,
+        avgAttemptsPerDialled: dialled ? this.attempts / dialled : 0,
+        avgConnectedPerBookAccount: N ? this.connected / N : 0,
+        avgConnectedPerDialled: dialled ? this.connected / dialled : 0,
+        dialsPerConnectedCall: this.connected ? this.attempts / this.connected : 0,
+        dialsPerReachedAccount: reached ? this.attempts / reached : 0,
+        distribution: INTENSITY_ORDER.filter((b) => this.intensity.get(b)).map((b) => {
+          const d = this.intensity.get(b);
+          return {
+            band: b, accounts: d.accounts, attempts: d.attempts, resolved: d.resolved,
+            sharePct: N ? d.accounts / N * 100 : 0,
+            resolutionPct: d.accounts ? d.resolved / d.accounts * 100 : 0,
+            thin: d.accounts > 0 && d.accounts < CELL_MIN,
+          };
+        }),
+        contactDistribution: CONTACT_ORDER.filter((b) => this.contact.get(b)).map((b) => {
+          const d = this.contact.get(b);
+          return {
+            band: b, accounts: d.accounts, resolved: d.resolved,
+            sharePct: N ? d.accounts / N * 100 : 0,
+            resolutionPct: d.accounts ? d.resolved / d.accounts * 100 : 0,
+            thin: d.accounts > 0 && d.accounts < CELL_MIN,
+          };
+        }),
+      },
+
+      /* 4 — the two rates that both get called "contact rate". Kept side by side with
+         their denominators spelled out, exactly as aiReach already does for the older
+         pair, because quoting one as the other in front of a bank is not a rounding
+         error. */
+      rates: {
+        attemptPct: this.attempts ? this.connected / this.attempts * 100 : 0,   // per DIAL
+        attemptNumerator: this.connected,
+        attemptDenominator: this.attempts,
+        contactPct: N ? reached / N * 100 : 0,                                   // per LEAD
+        contactNumerator: reached,
+        contactDenominator: N,
+        // …and the same per-lead figure once the answering machines are taken out.
+        humanContactPct: N ? this.humanReached / N * 100 : 0,
+        humanReached: this.humanReached,
+        voicemailCalls: this.vmCalls,
+        voicemailPctOfConnected: this.connected ? this.vmCalls / this.connected * 100 : 0,
+        humanConnected,
+        voicemailMinutes: this.vmSecs / 60,
+        talkMinutes: this.secs / 60,
+        humanTalkMinutes: Math.max(0, this.secs - this.vmSecs) / 60,
+      },
+
+      /* 5 — promise to pay: how many we generated, and how many the BANK later resolved.
+         The conversion number comes from the status file. It always does. */
+      ptp: {
+        accounts: this.ptpAcc,
+        resolved: this.ptpRes,
+        resolutionPct: this.ptpAcc ? this.ptpRes / this.ptpAcc * 100 : 0,
+        outstanding: this.ptpOut,
+        recovered: this.ptpRec,
+        recoveryPct: this.ptpOut ? this.ptpRec / this.ptpOut * 100 : 0,
+        openAmount: this.ptpOut - this.ptpRec,
+        sharePct: N ? this.ptpAcc / N * 100 : 0,
+        shareOfReachedPct: reached ? this.ptpAcc / reached * 100 : 0,
+        baseResolutionPct: baseRatePct,
+        liftPts: this.ptpAcc ? (this.ptpRes / this.ptpAcc * 100) - baseRatePct : 0,
+        thin: this.ptpAcc > 0 && this.ptpAcc < CELL_MIN,
+      },
+
+      /* 6 — complaints. A compliance figure, so it is a COUNT first and a rate second,
+         and its denominator is the book the bank gave us. */
+      complaints: {
+        accounts: this.cmpAcc,
+        ratePct: N ? this.cmpAcc / N * 100 : 0,
+        ofReachedPct: reached ? this.cmpAcc / reached * 100 : 0,
+        resolved: this.cmpRes,
+        resolutionPct: this.cmpAcc ? this.cmpRes / this.cmpAcc * 100 : 0,
+        outstanding: this.cmpOut,
+        alsoDnc: this.dncCmp,
+      },
+
+      /* 7 — DNC, and the check that matters: did we ring them again afterwards?
+         Not "how many said do not call" — anyone can count that. The number a
+         compliance officer asks for is how many we called AFTER they said it. */
+      dnc: {
+        accounts: this.dncAcc,
+        ratePct: N ? this.dncAcc / N * 100 : 0,
+        resolved: this.dncRes,
+        redialledAccounts: this.dncRedial,
+        redialledPct: this.dncAcc ? this.dncRedial / this.dncAcc * 100 : 0,
+        redialledDials: this.dncRedialDials,
+        maxDialsAfter: this.dncMaxAfter,
+        alsoComplaint: this.dncCmp,
+        refusedAccounts: this.refAcc,
+        refusedResolved: this.refRes,
+      },
+
+      /* The outbound trunks. NOT agents — see NOT_MEASURED.agent. Last four digits only:
+         these are Convin's own lines, and even so a full phone number has no business in
+         a document that gets forwarded. */
+      lines: [...this.line.entries()]
+        .map(([line, v]) => ({
+          line, attempts: v.attempts, connected: v.connected,
+          connectPct: v.attempts ? v.connected / v.attempts * 100 : 0,
+          sharePct: this.attempts ? v.attempts / this.attempts * 100 : 0,
+        }))
+        .sort((a, b) => b.attempts - a.attempts),
+
+      notMeasured: Aggregator.NOT_MEASURED,
     };
   }
 
@@ -498,16 +885,40 @@ export class Aggregator {
          call counts (39,905 and 6,710). The old labels said Calls while the bars showed
          leads, which invited an exec to read the funnel as a dialler report. */
       stage(2, 'Total Leads Attempted', this.fAttempted, this.rAttempted, 'journey', 'The AI dialled these'),
-      stage(3, 'Total Leads Connected', this.fConnected, this.rConnected, 'journey', 'A human actually picked up'),
+      /* "Connected" is the call log's own definition: the attempt has an Answered
+         Timestamp. On the real export 29.8% of those answers are VOICEMAIL — a machine
+         picked up, which is a connect and is not a conversation. The note used to read
+         "a human actually picked up", and with a per-attempt file in hand that is now a
+         claim we can check and it is not quite true. The human-only figure is on the
+         contact-rate card; this stage stays on the file's definition so it agrees with
+         every other connect number on the page. */
+      stage(3, 'Total Leads Connected', this.fConnected, this.rConnected, 'journey', 'The call was answered — includes voicemail; see the contact-rate card for the human-only split'),
       stage(4, 'Promise to Pay Later', this.fPtpLater, this.rPtpLater, 'outcome', 'Disposition L2 — the customer committed to pay later'),
       stage(5, 'Paid', this.fPaidL2, this.rPaidL2, 'outcome', 'Disposition L2 — the customer said the payment was made'),
       stage(6, 'Resolved Customers', resolved, resolved, 'outcome', 'RBL\'s own status file — the only outcome we did not write'),
     ];
-    const topOutstanding = this.top.map((t) => ({ name: t.name, outstanding: t.o, state: t.state, connected: t.connected, ptp: t.ptp, status: t.status }));
+    /* `ref` — a masked account, never a name. See _pushTop(). */
+    const topOutstanding = this.top.map((t) => ({ ref: t.ref, outstanding: t.o, state: t.state, connected: t.connected, ptp: t.ptp, status: t.status }));
 
     /* ── Fit RoshRegression on THIS batch's own outcomes ────────────────────── */
     const baseRate = N ? resolved / N : 0;
     const cuts = tierCuts(baseRate);
+
+    /* Everything the per-attempt call log unlocks. Computed here, from per-account
+       fields, so it re-derives on the Day Total union rather than being carried over. */
+    const callLog = this._callSection(N, resolved, baseRate * 100);
+
+    /* AI-only vs AI + agency. Identical shape to `segments`, so the UI can share the
+       "one cohort — nothing to compare" branch rather than grow a second one. */
+    const cohorts = [...this.agency.entries()]
+      .map(([name, v]) => ({
+        name, ...v,
+        resolutionPct: v.count ? v.resolved / v.count * 100 : 0,
+        recoveryPct: v.outstanding ? v.recovered / v.outstanding * 100 : 0,
+        connectPct: v.attempts ? v.connected / v.attempts * 100 : 0,
+        avgAttempts: v.count ? v.attempts / v.count : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
 
     /* The categorical vocabulary is discovered HERE, not hardcoded — we only know
        which segments and scores a book contains once the whole book has gone past.
@@ -669,7 +1080,7 @@ export class Aggregator {
           || (sources || []).find((s) => /primary/i.test(s.slot || ''))?.name || '',
         sources: sources || [],
       },
-      agg: { totals, ai, aiReach, entity: this.entity, disposition, dispositionL2, band, bandOrder, segments, region, state, duration, durationOrder: DUR_ORDER, durationByL2, l2BelowThreshold, l2Min: L2_MIN, paymentModes, funnel, topOutstanding, outcomeWindow },
+      agg: { totals, ai, aiReach, entity: this.entity, disposition, dispositionL2, band, bandOrder, segments, cohorts, region, state, duration, durationOrder: DUR_ORDER, durationByL2, l2BelowThreshold, l2Min: L2_MIN, paymentModes, funnel, topOutstanding, outcomeWindow, callLog },
       // Data-quality notes surfaced to the UI rather than swallowed. A bank would
       // rather be told its export is odd than see a chart quietly disagree with itself.
       quality: {

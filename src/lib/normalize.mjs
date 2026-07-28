@@ -132,6 +132,14 @@ export const ALIASES = {
   // that is genuinely independent of anything Convin did.
   segment: ['Segment', 'SEGMENT', 'Portfolio(PDD)'],
 
+  /* WHO worked the account. On the CYC exports we have seen this is a single value
+     ("Convin_NEW") — the whole book is one cohort — so the comparison it exists for
+     cannot be drawn yet. It is ingested anyway, because the day RBL sends a book that
+     splits AI-only accounts from AI+agency accounts, the comparison has to appear on
+     its own rather than wait for a release. Degrades to "one cohort" exactly the way
+     the Segment breakdown already does. */
+  ai_agency: ['AI Agency', 'AI_Agency', 'Agency'],
+
   // ── From the Lead Outcome file ─────────────────────────────────────────────
   // Convin's own collection score for the lead.
   lead_score: ['Lead Metric Collection Score', 'Lead Metric Collection Store', 'Collection Score'],
@@ -152,7 +160,7 @@ export const FIELD_LABELS = {
   promise_flag: 'Entity · Promise to Pay', refusal_flag: 'Entity · Refusal to Pay',
   payment_mode_raw: 'Mode of Payment', lead_link: 'Lead Link',
   segment: 'Segment (RBL)', lead_score: 'Lead Collection Score',
-  last_call_at: 'Last Call Timestamp',
+  last_call_at: 'Last Call Timestamp', ai_agency: 'AI Agency',
 };
 
 /* Ordered groups for the column-mapping UI.
@@ -165,7 +173,7 @@ export const FIELD_LABELS = {
  */
 export const FIELD_GROUPS = [
   { title: 'Required', keys: ['account_no', 'status', 'total_outstanding'] },
-  { title: 'Money & customer', keys: ['customer_name', 'minimum_amount_due', 'curr_bal_band', 'months_on_book', 'total_accounts_with_customer', 'segment'] },
+  { title: 'Money & customer', keys: ['customer_name', 'minimum_amount_due', 'curr_bal_band', 'months_on_book', 'total_accounts_with_customer', 'segment', 'ai_agency'] },
   { title: 'Geography', keys: ['region', 'primary_state', 'primary_city', 'mobile'] },
   { title: 'AI calling', keys: ['ai_attempts', 'ai_connected_calls', 'ai_connected_seconds', 'last_call_at', 'lead_score'] },
   { title: 'Outcomes & entities', keys: ['disp_l1', 'disp_l2', 'qual_status', 'goal_achieved', 'paid_flag', 'promise_flag', 'refusal_flag', 'payment_mode_raw'] },
@@ -363,6 +371,26 @@ export function missingCritical(rec, mapping) {
   return CRITICAL.filter((k) => String(getField(rec, k, mapping)).trim() === '');
 }
 
+/* Kept beside normalizeMap rather than imported from calllog.mjs, because calllog.mjs
+   imports from here and a cycle between the two would be a genuinely nasty thing to
+   debug. emptyCallFields() there returns these plus the legacy fields it overrides. */
+const CALL_DEFAULTS = {
+  first_call_at: '',
+  attempts_by_hour: '',
+  outbound_lines: '',
+  attempt_mask: '',
+  max_attempt: 0,
+  attempt_first_paid: 0,
+  dnc_attempt: 0,
+  dials_after_dnc: 0,
+  voicemail_calls: 0,
+  voicemail_seconds: 0,
+  complaint_flag: false,
+  dnc_flag: false,
+  refused_flag: false,
+  ptp_flag: false,
+};
+
 /** Merged record map -> canonical row. */
 export function normalizeMap(rec, mapping) {
   const g = (k) => getField(rec, k, mapping);
@@ -405,6 +433,17 @@ export function normalizeMap(rec, mapping) {
     // contains "low" / "high" / blank. Running num() over it silently turned "low"
     // into 0 and threw the signal away.
     lead_score: String(g('lead_score')).trim(),
+    // Which cohort worked this account (AI-only vs AI + agency). See ALIASES.ai_agency.
+    ai_agency: String(g('ai_agency')).trim(),
+
+    /* ── Rolled up from the AI CALL LOG ──────────────────────────────────────
+       Defaults only. The call log has one row per ATTEMPT, so it cannot be merged by
+       getField() like every other column — it is folded onto the account in
+       calllog.mjs and written over these. They are declared HERE so that the canonical
+       row has ONE shape whether or not a call log was uploaded: the database columns,
+       the Day Total union and the Aggregator all read the same fields either way, and
+       a book uploaded without a call log reads zero rather than undefined. */
+    ...CALL_DEFAULTS,
   };
 }
 

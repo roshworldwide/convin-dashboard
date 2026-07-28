@@ -1,85 +1,484 @@
-/* ─────────────────────────────────────────────────────────────
-   Theme tokens live on <html> so EVERY page + the body inherit
-   them. `html.dark` is toggled by the theme switch (and set
-   before paint by the init script in layout.js — no flash).
-   ───────────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * AURUM — THE TITANIUM STANDARD · Edition 27.0
+ * Recovery Intelligence · Convin × RBL Bank
+ *
+ * This file is the token layer, and it is the only place a raw colour value appears.
+ * Product code references a ROLE (--content-secondary), never a ramp value (--ti-20)
+ * and never a hex. That indirection is the whole system: five finishes are the same
+ * geometry, type and motion with a different token assignment, so a theme change
+ * recalculates nothing and shifts nothing by a single pixel.
+ *
+ * TWO FINISHES SHIP HERE, in full parity:
+ *   Black Titanium   DEFAULT · DARK    html.dark   — cinema, media, TELEMETRY, night.
+ *                                       The canonical expression: the void with one
+ *                                       warm light in it. This product is telemetry,
+ *                                       so this is the default.
+ *   Natural Titanium DEFAULT · LIGHT    :root      — documents, daylight, and every
+ *                                       printed page. Brushed paper-white with an
+ *                                       engraved dark label.
+ *
+ * THE LAWS THAT CONSTRAIN EVERY LINE BELOW
+ *   1. Material before decoration — every surface is glass, titanium or void.
+ *   2. Content is the only hero — chrome recedes, controls inherit tint from content.
+ *   3. One family of curves — six easings, six springs, no exceptions.
+ *   4. Continuous, never cut — nothing appears; everything arrives from where it came.
+ *   5. Restraint is the luxury — two neutrals, one metal, ONE accent per screen.
+ *   6. Eight point three three — 8.33 ms/frame or the feature is not finished.
+ *   7. Made to be inherited — proportion, material and clarity have never dated.
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── PRIMITIVES ────────────────────────────────────────────────────────────────
+   Ramp values. Product code NEVER references these directly — they exist so the
+   semantic roles below have something to point at. Additive only: a token is never
+   edited in place, it is deprecated, replaced and removed one release later.        */
 :root {
-  --ink: 29, 29, 31;
-  --text: #1D1D1F;
-  --plane:
-    radial-gradient(1100px 650px at 10% -8%, rgba(0,113,227,.10), transparent 60%),
-    radial-gradient(950px 600px at 92% 0%, rgba(175,82,222,.09), transparent 55%),
-    radial-gradient(1300px 850px at 50% 108%, rgba(201,187,160,.28), transparent 60%),
-    linear-gradient(160deg, #F7F6F2 0%, #EDEBE4 48%, #E6E3DA 100%);
-  --glass-bg: linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.5));
-  --glass-border: rgba(255,255,255,.9);
-  --glass-shadow: 0 1px 0 rgba(255,255,255,.9) inset, 0 20px 40px -22px rgba(29,29,31,.16);
-  --glass-shadow-hi: 0 1px 0 rgba(255,255,255,1) inset, 0 26px 46px -22px rgba(29,29,31,.22);
-  --input-bg: rgba(255,255,255,.72);
-  --track: rgba(29,29,31,.07);
-  --scroll: rgba(29,29,31,.16);
+  /* COLOUR · TITANIUM — the structural ramp. Warm-neutral, brushed rather than
+     bright: a grey with iron in it. Every surface, stroke and label in the system is
+     drawn from these thirteen values and nothing else. Chroma never exceeds 0.015 —
+     above that the ramp reads as beige and the metal loses its scarcity. */
+  --ti-00:  #F7F6F4;
+  --ti-05:  #EFEDEA;
+  --ti-10:  #E3E0DB;
+  --ti-20:  #CFCBC4;
+  --ti-30:  #B4AFA7;
+  --ti-40:  #98938A;
+  --ti-50:  #7C776E;
+  --ti-60:  #615D56;
+  --ti-70:  #4A4741;
+  --ti-80:  #35322E;
+  --ti-90:  #232120;
+  --ti-95:  #171615;
+  --ti-100: #0B0B0B;   /* Obsidian. NEVER pure #000 — on OLED, black clips the panel
+                          to off and the glass edge loses its lensing. Obsidian keeps
+                          5.9% luminance, enough for refraction to survive. */
+
+  /* Alpha-composited forms of the two ends of the ramp. Strokes and fills are stated
+     as a PERCENTAGE of one of these, never as a new opaque colour, so they stay
+     correct over glass, over media and in both finishes. */
+  --ti-00-rgb:  247, 246, 244;
+  --ti-100-rgb: 11, 11, 11;
+
+  /* COLOUR · AURUM — the single metal. Desert-titanium champagne. Used ONCE per
+     screen, on the element of consequence. Its scarcity is the source of its power:
+     a second gold element halves the value of the first. */
+  --au-05: #FBF3E6;   /* Vellum      — Desert Gold theme canvas                      */
+  --au-10: #F6E7CE;   /* Bloom       — specular top of metal                         */
+  --au-20: #EED6AE;   /* Sand        — selected-row wash                             */
+  --au-30: #E3C089;   /* Champagne   — the signature value · dark-theme accent       */
+  --au-40: #D4A96A;   /* Brass       — filled-capsule background on dark             */
+  --au-50: #C08F4E;   /* Aurum       — brand core. Marks, keylines. NEVER body text. */
+  --au-60: #A5763D;   /* Bronze      — large-text accent on light (AA at 24px+)      */
+  --au-70: #835C30;   /* Patina      — light-theme accent. AA for body text.         */
+  --au-80: #5E4223;   /* Umber       — pressed accent on light                       */
+  --au-90: #3A2916;   /* Ember       — accent-tinted dark glass fill                 */
+  --au-30-rgb: 227, 192, 137;
+  --au-70-rgb: 131, 92, 48;
+
+  /* COLOUR · VAPOR — the cold axis. Cools glass and states distance. Never brand
+     expression, never decoration: glass tint, depth and atmosphere only. */
+  --vz-10: #D0E4EA;
+  --vz-30: #A9B6C4;
+  --vz-50: #667F90;
+  --vz-70: #445B5C;
+  --vz-90: #232833;
+
+  /* COLOUR · SIGNAL — four hues, one meaning each, RESERVED FOR STATE.
+     Never brand, never decoration. Every Signal use carries a shape, a word or a
+     position as a second channel, because a system that men cannot resolve Nominal
+     from Abort by hue is a system that fails by hue. */
+  --sig-nominal: #38D158;   /* success, completion, within tolerance   9.74:1 on obsidian */
+  --sig-caution: #FFD68A;   /* degraded, approaching limit. NEVER paired with gold.       */
+  --sig-abort:   #FF453A;   /* failure and destruction. Always with an action.   5.78:1   */
+  --sig-link:    #0A84FF;   /* navigation AWAY from the current context only.    5.40:1   */
+  --sig-nominal-rgb: 56, 209, 88;
+  --sig-caution-rgb: 255, 214, 138;
+  --sig-abort-rgb:   255, 69, 58;
+
+  /* ── TYPE ────────────────────────────────────────────────────────────────────
+     SF Pro is the only typeface in the system. No display face, no serif, no
+     third-party licence, no exceptions. The stack below contains only mechanisms
+     that resolve to SF Pro on an Apple platform, plus a last-resort system-ui —
+     there is deliberately no Segoe, Helvetica, Arial or webfont in it.
+
+     OPTICAL SIZING IS MANDATORY. The cut switches at 20 pt, not by eye: Display
+     below 20 pt collapses its counters; Text above 20 pt looks slack and amateur. */
+  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-text:    "SF Pro Text", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono:    "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* The fourteen steps. A closed set. If a design needs a fifteenth size, the design
+     is wrong. Leading is expressed in points, not multiples, so every step lands on
+     the 4-pt grid. Tracking follows size: −0.045 em at 96 pt easing to +0.16 at 10. */
+  --size-colossus:  96px;  --lead-colossus:  88px;  --track-colossus:  -0.045em;
+  --size-display-1: 64px;  --lead-display-1: 64px;  --track-display-1: -0.038em;
+  --size-display-2: 48px;  --lead-display-2: 52px;  --track-display-2: -0.032em;
+  --size-title-1:   34px;  --lead-title-1:   40px;  --track-title-1:   -0.026em;
+  --size-title-2:   28px;  --lead-title-2:   34px;  --track-title-2:   -0.021em;
+  --size-title-3:   22px;  --lead-title-3:   28px;  --track-title-3:   -0.016em;
+  --size-headline:  17px;  --lead-headline:  22px;  --track-headline:  -0.010em;
+  --size-body:      17px;  --lead-body:      25px;  --track-body:      -0.004em;
+  --size-callout:   16px;  --lead-callout:   21px;  --track-callout:    0em;
+  --size-subhead:   15px;  --lead-subhead:   20px;  --track-subhead:    0em;
+  --size-footnote:  13px;  --lead-footnote:  18px;  --track-footnote:  +0.005em;
+  --size-caption:   12px;  --lead-caption:   16px;  --track-caption:   +0.010em;
+  --size-micro:     11px;  --lead-micro:     13px;  --track-micro:     +0.014em;
+  --size-overline:  10px;  --lead-overline:  12px;  --track-overline:  +0.160em;
+
+  /* ── SPACE & RADIUS ─────────────────────────────────────────────────────────
+     One base unit for the whole system. Every dimension in every product is 4 × n.
+     Six, ten, eighteen and twenty-two do not exist. A designer who needs 18 px is
+     compensating for a mistake two levels up the tree. */
+  --space-1:  4px;   /* icon-to-label, badge inset          */
+  --space-2:  8px;   /* within a control · chip gap         */
+  --space-3:  12px;  /* title to subtitle                   */
+  --space-4:  16px;  /* card padding · row gap              */
+  --space-5:  20px;  /* screen edge, compact width          */
+  --space-6:  24px;  /* between groups                      */
+  --space-8:  32px;  /* section separation                  */
+  --space-12: 48px;  /* chapter break, hero inset           */
+  --space-16: 64px;  /* editorial silence — the luxury value */
+
+  --radius-sm:      12px;   /* inline chips, code blocks, swatches, thumbnails      */
+  --radius-md:      16px;
+  --radius-lg:      20px;   /* cards, tiles, media, panels                          */
+  --radius-xl:      28px;   /* sheets, modals, full-width surfaces                  */
+  --radius-capsule: 999px;  /* anything a finger touches, up to 56 pt of height     */
+  --target-min:     44px;   /* below this a control is unusable in motion           */
+
+  /* ── MOTION — six curves, six springs, no exceptions ────────────────────────
+     A product with eleven easings feels assembled by eleven people. Motion is a
+     signature, and a signature is written by one hand. */
+  --ease-standard: cubic-bezier(.32, .72, 0, 1);    /* default: position or size    */
+  --ease-enter:    cubic-bezier(.16, 1, .3, 1);     /* objects arriving             */
+  --ease-exit:     cubic-bezier(.7, 0, .84, 0);     /* objects leaving — always faster */
+  --ease-glide:    cubic-bezier(.4, 0, .2, 1);      /* symmetric, known distance    */
+  --ease-snap:     cubic-bezier(.34, 1.26, .64, 1); /* 4% overshoot. Sparingly.     */
+
+  --dur-micro:   90ms;
+  --dur-small:  160ms;
+  --dur-medium: 240ms;
+  --dur-large:  400ms;
+  --dur-enter:  520ms;
+  --dur-exit:   280ms;
+  --dur-morph:  620ms;
+  --dur-ambient: 4000ms;
+  --stagger:     24ms;
+  --frame-budget: 8.33ms;
+
+  /* ── MATERIAL — Liquid Glass, five recipes ─────────────────────────────────
+     Glass refracts what is beneath it, reflects what is around it, and lenses along
+     its edge. It is a lens, never a filter, and never a static blur that fails to
+     update on scroll — that is dead plastic. */
+  --glass-thin:    blur(20px) saturate(170%);
+  --glass-regular: blur(28px) saturate(180%);
+  --glass-thick:   blur(40px) saturate(150%) brightness(.86);
+
+  /* ── ELEVATION — one light source, 12° above the viewer, infinitely far away.
+     It never moves, never colours, never multiplies. Every level is TWO shadows: a
+     wide soft ambient offset by the elevation, plus a tight dark contact shadow
+     offset by a quarter of it. Blur is 2.4 × offset. Spread stays at zero — a single
+     shadow reads as a sticker; two read as an object resting in a room. */
+  --e0: none;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * SEMANTIC LAYER — 42 roles.
+ * Product code touches ONLY these. The two columns below are the same forty-two
+ * roles pointed at different ramp values; nothing else differs between the finishes.
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── NATURAL TITANIUM · DEFAULT · LIGHT ─────────────────────────────────────── */
+:root {
+  --surface-canvas:   var(--ti-00);
+  --surface-grouped:  var(--ti-05);
+  --surface-raised:   var(--ti-00);
+  --surface-glass:    rgba(var(--ti-00-rgb), .62);
+  --surface-scrim:    rgba(var(--ti-100-rgb), .34);
+
+  --content-primary:    var(--ti-100);   /* 18.22:1 — titles and the sentence that matters */
+  --content-secondary:  var(--ti-70);    /*  8.57:1 — body                                 */
+  --content-tertiary:   var(--ti-60);    /*  6.06:1 — metadata, timestamps, captions       */
+  --content-quaternary: var(--ti-40);    /* placeholder and disabled ONLY. Never a real word */
+  --content-accent:     var(--au-70);    /* 5.49:1 — one instance per viewport             */
+  --content-on-accent:  var(--ti-00);
+
+  --stroke-hairline: rgba(var(--ti-100-rgb), .09);
+  --stroke-rim:      rgba(var(--ti-100-rgb), .12);
+  --stroke-focus:    var(--au-70);
+
+  --fill-quiet:   rgba(var(--ti-100-rgb), .05);
+  --fill-pressed: rgba(var(--ti-100-rgb), .11);
+  --fill-accent:  linear-gradient(168deg, var(--au-50), var(--au-70));
+
+  --specular-top:    rgba(255, 255, 255, .80);
+  --specular-bottom: rgba(var(--ti-100-rgb), .06);
+  --shadow-rgb:      var(--ti-100-rgb);
+  --shadow-key:      rgba(var(--ti-100-rgb), .14);
+  --glow-accent:     transparent;        /* warm metal does not glow in daylight */
+
+  --accent-rgb: var(--au-70-rgb);
+  --glass-fallback: rgba(var(--ti-00-rgb), .92);
+
+  /* Light themes halve everything. On paper-white, key opacity drops to roughly a
+     quarter of the dark values — any more and the card reads as dirt, not depth. */
+  --e1: 0 1px 2px rgba(var(--ti-100-rgb), .07),  0 0 1px  rgba(var(--ti-100-rgb), .05);
+  --e2: 0 4px 10px rgba(var(--ti-100-rgb), .09), 0 1px 2px rgba(var(--ti-100-rgb), .06);
+  --e3: 0 10px 24px rgba(var(--ti-100-rgb), .13), 0 2px 5px rgba(var(--ti-100-rgb), .07);
+  --e4: 0 18px 44px rgba(var(--ti-100-rgb), .12), 0 4px 10px rgba(var(--ti-100-rgb), .08);
+  --e5: 0 28px 70px rgba(var(--ti-100-rgb), .18);
+}
+
+/* ── BLACK TITANIUM · DEFAULT · DARK ────────────────────────────────────────── */
 html.dark {
-  --ink: 235, 235, 242;
-  --text: #F5F5F7;
-  --plane:
-    radial-gradient(1100px 650px at 10% -8%, rgba(0,113,227,.18), transparent 60%),
-    radial-gradient(950px 600px at 92% 0%, rgba(175,82,222,.15), transparent 55%),
-    radial-gradient(1300px 850px at 50% 108%, rgba(120,120,140,.16), transparent 60%),
-    linear-gradient(160deg, #1e1e21 0%, #17171a 48%, #0e0e10 100%);
-  --glass-bg: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
-  --glass-border: rgba(255,255,255,.14);
-  --glass-shadow: 0 1px 0 rgba(255,255,255,.07) inset, 0 24px 46px -22px rgba(0,0,0,.65);
-  --glass-shadow-hi: 0 1px 0 rgba(255,255,255,.10) inset, 0 30px 54px -22px rgba(0,0,0,.7);
-  --input-bg: rgba(255,255,255,.07);
-  --track: rgba(255,255,255,.10);
-  --scroll: rgba(255,255,255,.20);
+  --surface-canvas:   var(--ti-100);
+  --surface-grouped:  var(--ti-95);
+  --surface-raised:   var(--ti-90);
+  --surface-glass:    rgba(var(--ti-00-rgb), .09);
+  --surface-scrim:    rgba(var(--ti-100-rgb), .56);
+
+  --content-primary:    var(--ti-00);    /* 18.22:1 */
+  --content-secondary:  var(--ti-20);    /* 12.18:1 */
+  --content-tertiary:   var(--ti-40);    /*  6.44:1 — still AA */
+  --content-quaternary: var(--ti-60);
+  --content-accent:     var(--au-30);    /*  6.82:1 */
+  --content-on-accent:  var(--ti-100);   /* obsidian on gold, always */
+
+  --stroke-hairline: rgba(var(--ti-00-rgb), .09);
+  --stroke-rim:      rgba(var(--ti-00-rgb), .18);
+  --stroke-focus:    var(--au-30);
+
+  --fill-quiet:   rgba(var(--ti-00-rgb), .07);
+  --fill-pressed: rgba(var(--ti-00-rgb), .14);
+  /* 168° two-stop, 6% delta. Flat metal looks printed. */
+  --fill-accent:  linear-gradient(168deg, var(--au-30), var(--au-40));
+
+  --specular-top:    rgba(255, 255, 255, .45);
+  --specular-bottom: rgba(255, 255, 255, .12);
+  --shadow-rgb:      var(--ti-100-rgb);
+  --shadow-key:      rgba(var(--ti-100-rgb), .68);
+  --glow-accent:     rgba(var(--au-30-rgb), .28);
+
+  --accent-rgb: var(--au-30-rgb);
+  --glass-fallback: rgba(23, 22, 21, .92);   /* Titanium 95, opaque — sheet 26 */
+
+  /* Signal, dark-theme values. The light column re-states them below. */
+  --sig-nominal: #38D158;
+  --sig-caution: #FFD68A;
+  --sig-abort:   #FF453A;
+  --sig-link:    #0A84FF;
+
+  /* Elevation, dark. TWO shadows at every level: a wide soft ambient offset by the
+     elevation, plus a tight dark contact shadow at a quarter of it. Blur is 2.4 ×
+     offset, spread stays at zero. Stated HERE rather than inherited, because the
+     light column below overrides them and an inherited light shadow on obsidian is
+     invisible — the cards would flatten onto the canvas with no way to tell. */
+  --e1: 0 1px 2px   rgba(var(--ti-100-rgb), .40), 0 0 1px   rgba(var(--ti-100-rgb), .24);
+  --e2: 0 4px 10px  rgba(var(--ti-100-rgb), .44), 0 1px 2px rgba(var(--ti-100-rgb), .28);
+  --e3: 0 10px 24px rgba(var(--ti-100-rgb), .52), 0 2px 5px rgba(var(--ti-100-rgb), .30);
+  --e4: 0 18px 44px rgba(var(--ti-100-rgb), .48), 0 4px 10px rgba(var(--ti-100-rgb), .34);
+  /* e5 · Singular. The one hero object, once per product. Its Aurum bloom is emitted
+     light — zero offset — not a coloured shadow. */
+  --e5: 0 28px 70px rgba(var(--ti-100-rgb), .70), 0 0 42px rgba(var(--au-30-rgb), .20);
 }
 
+/* Signal, LIGHT column. The same four meanings, re-pitched so each still clears
+   4.5:1 on paper-white — a hue that passes on obsidian fails on vellum. */
+:root:not(.dark) {
+  --sig-nominal: #1C7430;
+  --sig-caution: #7A5606;
+  --sig-abort:   #D70015;
+  --sig-link:    #0064A2;
+  --sig-nominal-rgb: 28, 116, 48;
+  --sig-caution-rgb: 122, 86, 6;
+  --sig-abort-rgb:   215, 0, 21;
+}
+
+/* ── THE CHART RAMP ───────────────────────────────────────────────────────────
+   Charts are ink-minimal: no gridlines, no legend where a direct label fits, no axis
+   the data does not need, and NO GRADIENT THAT DOES NOT ENCODE A VALUE. One stroke,
+   Aurum, on the series that matters; everything else is Titanium.
+
+   Ordered data — a balance band, an attempt number, a duration bucket — gets a
+   sequential luminance ramp rather than six unrelated hues, because six hues make the
+   reader learn a legend to answer a question the ordering already answers. --ramp-1
+   is always the quietest and --ramp-6 the strongest IN BOTH FINISHES, which means the
+   two columns run in opposite directions along the Titanium ramp: light bars on
+   obsidian, dark bars on paper. */
+:root {
+  --ramp-1: var(--ti-30); --ramp-2: var(--ti-40); --ramp-3: var(--ti-50);
+  --ramp-4: var(--ti-60); --ramp-5: var(--ti-70); --ramp-6: var(--ti-90);
+  --ink-rgb: var(--ti-100-rgb);
+}
+html.dark {
+  --ramp-1: var(--ti-70); --ramp-2: var(--ti-60); --ramp-3: var(--ti-50);
+  --ramp-4: var(--ti-40); --ramp-5: var(--ti-30); --ramp-6: var(--ti-20);
+  --ink-rgb: var(--ti-00-rgb);
+}
+
+/* ── THE METAL ────────────────────────────────────────────────────────────────
+   Not a gold gradient. A REFLECTION: a polished surface returning a titanium sky
+   above and a warm ground below, with one specular ridge where the curvature turns.
+   Six stops, one angle, one break. 168° is not a taste value — the system's light
+   source sits 12° above the viewer, and 180° − 12° is where that light would strike.
+
+   The Break at 58% is the whole illusion: a 12-point luminance jump over 12% of the
+   run. Move it outside 54–60% and the surface stops reading as metal.
+
+   Interpolated in oklab. sRGB drags the Body→Break transition through a muddy olive.  */
+:root {
+  --metal-aurum: linear-gradient(168deg in oklab,
+    #FFFFFF 4%,      /* Crown  — the one place in the system where #FFF is legal */
+    #F6E7CE 22%,     /* Bloom  — warm halation; without it this is chrome-plated steel */
+    #8E8A82 46%,     /* Body   — titanium mass. Remove it and the gradient is a wash. */
+    #F7F6F4 58%,     /* Break  — the ridge */
+    #C08F4E 76%,     /* Core   — Aurum 50, the brand value, unmodified */
+    #4A4741 100%);   /* Root   — shadow terminator. Titanium 70, not brown: the metal
+                        is lit by one grey light, so its darkest return is grey. */
+  /* The bloom is NOT part of the gradient. It is emitted light — zero offset,
+     Aurum 30 at 28%. Removed entirely on light finishes: warm metal does not glow
+     in daylight. */
+  --metal-glow: drop-shadow(0 0 42px rgba(var(--au-30-rgb), .28));
+}
+
+/* ── THE INVERSE ALLOY ────────────────────────────────────────────────────────
+   A metal reflects its surroundings. Change the room and the finish changes with it —
+   which is why the canonical alloy CANNOT be used on a light canvas: its Crown is
+   #FFFFFF and its Break is #F7F6F4, so on paper-white the two brightest stops, and
+   the ridge between them that is the entire illusion, vanish. The headline reads as
+   three disconnected brown smudges.
+
+   Obsidian is the same six-stop structure, the same 168°, the same Break position —
+   with the reflected environment substituted. Dark returns, one bright ridge: a
+   blackened steel case rather than a polished gold one. */
+:root:not(.dark) {
+  --metal-aurum: linear-gradient(168deg in oklab,
+    #7C776E 4%,     /* Crown — Titanium 50, the specular return of a grey sky */
+    #4A4741 20%,    /* Bloom */
+    #232120 44%,    /* Body  — the mass */
+    #98938A 68%,    /* Break — the ridge, still the steepest slope in the run */
+    #5E4223 78%,    /* Core  — Umber. The warmth survives; it is still gold underneath. */
+    #0B0B0B 100%);  /* Root  — obsidian */
+  --metal-glow: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * BASE
+ * ═══════════════════════════════════════════════════════════════════════════════ */
 * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
 html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--plane);
-  background-attachment: fixed;
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
-  transition: color .25s ease;
+  background: var(--surface-canvas);
+  color: var(--content-primary);
+  font-family: var(--font-text);
+  font-size: var(--size-body);
+  line-height: var(--lead-body);
+  letter-spacing: var(--track-body);
+  font-optical-sizing: auto;
+  /* A theme change is a 320 ms cross-fade of the TOKEN LAYER only. Geometry, type and
+     motion are identical across finishes, so no layout recalculates and nothing shifts
+     by a single pixel. Finish is a costume; the skeleton never changes. */
+  transition: background-color 320ms var(--ease-glide), color 320ms var(--ease-glide);
 }
 
-::selection { background: rgba(0,113,227,.18); color: var(--text); }
+/* The void with one warm light in it. A single ambient source, fixed, behind
+   everything — the only decorative light in the system and the only permitted
+   ambient loop (sheet 34: glow 0.18 ↔ 0.28 over 4 s, Glide, alternate). */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(1200px 780px at 50% -12%, var(--glow-accent), transparent 62%);
+  opacity: .18;
+  animation: ambient var(--dur-ambient) var(--ease-glide) infinite alternate;
+}
+@keyframes ambient { from { opacity: .18; } to { opacity: .28; } }
 
-/* ── Capsule buttons + inputs (Apple) ───────────────────────── */
-button, .btn, input[type="submit"] { border-radius: 999px; }
+::selection { background: rgba(var(--accent-rgb), .22); color: var(--content-primary); }
+
+/* ── THE CAPSULE LAW ──────────────────────────────────────────────────────────
+   Anything a finger touches is a capsule. Anything that holds content is a squircle.
+   NOTHING is a rectangle — only a full-bleed edge that reaches the screen boundary
+   may be square, because there is no corner left to resolve.
+
+   A capsule has no corners to resolve, so it reads as a single object in one saccade
+   — the fastest shape the eye can parse.                                            */
+button, .btn, input[type="submit"], .u-capsule { border-radius: var(--radius-capsule); }
 input[type="text"], input[type="password"], input[type="number"], input[type="date"], select {
-  border-radius: 999px;
+  border-radius: var(--radius-capsule);
 }
-button { font-family: inherit; }
+button, input, select, textarea, optgroup { font-family: inherit; font-size: inherit; }
 
-/* ── Scrollbar ──────────────────────────────────────────────── */
+/* Continuous curvature. A circular corner joins its straight edge with a curvature
+   discontinuity the eye registers as a faint crease; a superellipse eases curvature
+   to zero and the join disappears. Where `corner-shape` is unavailable, a circular
+   radius 8% larger matches the perceived roundness. */
+.u-squircle { border-radius: calc(var(--radius-lg) * 1.08); }
+.u-squircle-xl { border-radius: calc(var(--radius-xl) * 1.08); }
+.u-squircle-sm { border-radius: calc(var(--radius-sm) * 1.08); }
+@supports (corner-shape: squircle) {
+  .u-squircle    { corner-shape: squircle; border-radius: var(--radius-lg); }
+  .u-squircle-xl { corner-shape: squircle; border-radius: var(--radius-xl); }
+  .u-squircle-sm { corner-shape: squircle; border-radius: var(--radius-sm); }
+}
+
+/* ── FOCUS ────────────────────────────────────────────────────────────────────
+   3 pt Aurum ring at 2 pt offset, OUTSIDE the shape. Never removed, never inset,
+   never replaced by a colour change. This is the one place a second gold element is
+   permitted on a screen, because it is transient and it is the user's own position. */
+:focus-visible {
+  outline: 3px solid var(--stroke-focus);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* ── SCROLLBAR ────────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb {
+  background: var(--stroke-rim);
+  border-radius: var(--radius-capsule);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 
 select {
   appearance: none; -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%238E8E93' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  background-repeat: no-repeat; background-position: right 12px center;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%2398938A' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 14px center;
 }
 
-/* ── Animations ─────────────────────────────────────────────── */
-@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-@keyframes islandIn { 0% { opacity: 0; transform: translate3d(-50%, -14px, 0) scale(.94); } 100% { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1); } }
-@keyframes cardIn { 0% { opacity: 0; transform: translateY(10px) scale(.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* Every figure in this product is tabular. A live number whose digits jitter as they
+   change destroys the illusion of an instrument. */
+.u-num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 
-/* ── Dynamic Island — GPU-composited, no flicker ─────────────
-   The element is centred with translate3d (never re-laid out),
-   promoted to its own layer, and only `transform` animates.     */
+/* ── ANIMATION ────────────────────────────────────────────────────────────────
+   Compositor-only properties: transform, opacity, filter, clip-path, backdrop-filter.
+   NEVER width/height, top/left/margin, box-shadow, border-radius or background-position.
+   A bar that animates its width forces a layout read on every frame and blows the
+   8.33 ms budget on the one element whose job is to look effortless.                */
+@keyframes fadeUp   { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes cardIn   { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes islandIn { from { opacity: 0; transform: translate3d(-50%, -14px, 0) scale(.94); } to { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1); } }
+@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes spin     { to { transform: rotate(360deg); } }
+/* Bars grow on the compositor: scaleX from the left edge, never a width transition. */
+@keyframes growX    { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.u-grow {
+  transform-origin: left center;
+  animation: growX var(--dur-large) var(--ease-standard) both;
+}
+.u-rise { animation: fadeUp var(--dur-enter) var(--ease-enter) both; }
+
+/* ── CHROME ───────────────────────────────────────────────────────────────────
+   Chrome is glass and FLOATS; content is opaque and scrolls beneath it. The two
+   never trade roles. */
 .island {
   position: fixed;
   top: 18px;
@@ -89,112 +488,151 @@ select {
   will-change: transform;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  transition: transform .45s cubic-bezier(.32,.72,0,1), box-shadow .45s ease;
-  animation: islandIn .6s cubic-bezier(.32,.72,0,1) both;
-}
-.island:hover {
-  transform: translate3d(-50%, 0, 0) scale(1.012);
-  box-shadow: var(--glass-shadow-hi);
+  transition: transform var(--dur-large) var(--ease-standard);
+  animation: islandIn var(--dur-enter) var(--ease-enter) both;
 }
 
-/* ── Cards ──────────────────────────────────────────────────── */
-.hover-kpi { transition: transform .45s cubic-bezier(.32,.72,0,1), box-shadow .45s ease; will-change: transform; }
-.hover-kpi:hover { transform: translateY(-4px); box-shadow: var(--glass-shadow-hi); }
+/* Hover raises by exactly one elevation level — e1 → e2. Two levels reads as a jump. */
+.hover-kpi { transition: transform var(--dur-large) var(--ease-standard); will-change: transform; }
+.hover-kpi:hover { transform: translateY(-2px); }
+.hover-row { transition: background-color var(--dur-small) var(--ease-glide); }
+.hover-row:hover { background: var(--fill-quiet) !important; }
 
-.hover-row { transition: background-color .18s ease; }
-.hover-row:hover { background: rgba(var(--ink), .05) !important; }
+/* Press: scale 0.96 + fill-pressed, 90 ms on Exit. Colour alone never reads as pressed
+   — the object has to move, because the body reads mass before it reads hue. */
+.pill {
+  border-radius: var(--radius-capsule);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color var(--dur-medium) var(--ease-glide),
+              color var(--dur-medium) var(--ease-glide),
+              transform var(--dur-micro) var(--ease-exit);
+}
+.pill:active { transform: scale(.96); }
 
-/* Pill (segmented / tab) buttons */
-.pill { border-radius: 999px; border: none; cursor: pointer; transition: background-color .22s ease, color .22s ease; }
+/* ── ACCESSIBILITY FLOOR ──────────────────────────────────────────────────────
+   Nothing here is optional and nothing on this list may be traded for visual effect.
+   A system that becomes unusable when a setting is changed was never a system — it
+   was a screenshot.                                                                 */
 
-/* ─────────────────────────────────────────────────────────────
-   PRINT / PDF
-   The exec asked for "the dashboard, exactly as it looks, as a PDF".
-   So we do NOT build a second renderer — a separate PDF layout is a
-   second source of truth, and the two would drift apart within a week.
-   Instead the browser prints the real page, and these rules only:
-     · force the light theme (nobody prints a dark background)
-     · keep every colour (browsers strip backgrounds by default)
-     · hide the chrome that means nothing on paper
-     · stop cards being sliced in half across a page break
-   ───────────────────────────────────────────────────────────── */
-@media print {
-  /* ─────────────────────────────────────────────────────────────────────────────
-     THE PAGE ITSELF
-
-     LANDSCAPE, on purpose. This is a dashboard: 12-column grids, a 6-column
-     duration × disposition cross-tab, a 7-column disposition table. Forced into A4
-     portrait the browser lays it out at ~794px and every one of those grids crushes
-     — columns collide, numbers wrap mid-figure, the wide tables clip. Landscape gives
-     ~1120px, which is close to what the layout was designed for, so the PDF looks
-     like the screen instead of a squashed apology for it.
-
-     Margins are generous and EQUAL left/right so nothing sits flush to the trim, and
-     the bottom is deeper than the top to make room for the running footer.
-     ───────────────────────────────────────────────────────────────────────────── */
-  @page {
-    size: A4 landscape;
-    margin: 14mm 15mm 18mm 15mm;
+/* REDUCE MOTION — all travel and scale become a 160 ms opacity cross-fade at the
+   destination. The ambient glow loop stops. No state is lost. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 160ms !important;
+    transition-property: opacity !important;
+    scroll-behavior: auto !important;
   }
+  .u-grow { transform: none !important; }
+  body::before { animation: none !important; opacity: .22; }
+}
 
-  /* Chrome/Safari drop background colours and gradients when printing. Without this
-     the whole thing arrives as white boxes with black text — every bar, every ring,
-     every heat cell gone. */
+/* REDUCE TRANSPARENCY — every glass recipe collapses to an opaque luminance token.
+   The rim survives; the blur does not. */
+@media (prefers-reduced-transparency: reduce) {
+  .u-glass {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--glass-fallback) !important;
+  }
+}
+
+/* INCREASE CONTRAST — every label promotes one rung up the ramp, rim opacity doubles,
+   hairlines become 1 pt at 24%, and the alloy is replaced by flat --content-primary
+   (a six-stop gradient cannot meet the text floor and never could). */
+@media (prefers-contrast: more) {
+  :root {
+    --content-secondary: var(--ti-100);
+    --content-tertiary:  var(--ti-70);
+    --stroke-hairline:   rgba(var(--ti-100-rgb), .24);
+    --stroke-rim:        rgba(var(--ti-100-rgb), .24);
+  }
+  html.dark {
+    --content-secondary: var(--ti-00);
+    --content-tertiary:  var(--ti-20);
+    --stroke-hairline:   rgba(var(--ti-00-rgb), .24);
+    --stroke-rim:        rgba(var(--ti-00-rgb), .36);
+  }
+  .u-metal {
+    background: var(--content-primary) !important;
+    -webkit-background-clip: initial !important;
+    background-clip: initial !important;
+    -webkit-text-fill-color: var(--content-primary) !important;
+    filter: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * PRINT / PDF
+ *
+ * The exec asked for "the dashboard, exactly as it looks, as a PDF". So there is NO
+ * second renderer — a separate PDF layout is a second source of truth and the two
+ * drift apart within a week. The browser prints the real page; these rules only:
+ *   · force NATURAL TITANIUM (nobody prints a void, and no printer can)
+ *   · keep every colour (browsers strip backgrounds by default)
+ *   · hide the chrome that means nothing on paper
+ *   · stop a card being sliced in half across a fold
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+@media print {
+  /* LANDSCAPE, on purpose. This is a dashboard: 12-column grids, a 6-column
+     duration × disposition cross-tab, a 7-column disposition table. Forced into A4
+     portrait the browser lays it out at ~794 px and every one of those grids crushes.
+     Landscape gives ~1120 px, close to what the layout was designed for. */
+  @page { size: A4 landscape; margin: 14mm 15mm 18mm 15mm; }
+
   *, *::before, *::after {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  html {
-    /* THE PAGE-COUNT LEVER.
-       Every card carries `break-inside: avoid` — it must, or a chart gets sliced in half
-       across a fold. The cost is white space: a card taller than the remaining room on a
-       sheet jumps to the next one and leaves the gap behind it. Do that seventeen times
-       and the report is mostly paper — 14 sheets, half of them empty.
-
-       Shrinking the layout is the fix, and `zoom` is the only tool that does it WITHOUT
-       breaking pagination (transform: scale() paints smaller but the browser still
-       paginates at the original size, so you get shrunken content on the same number of
-       pages, floating in the corner). zoom changes layout, so the paginator sees the
-       smaller boxes and packs them. Chrome — which is what this prints from — supports it.
-
-       0.82 puts roughly three cards on a sheet instead of one and a half. */
-    zoom: 0.82;
-  }
+  /* THE PAGE-COUNT LEVER. Every card carries break-inside: avoid — it must, or a
+     chart gets sliced across a fold. The cost is white space. `zoom` is the only tool
+     that shrinks the layout WITHOUT breaking pagination (transform: scale() paints
+     smaller but the paginator still measures the original boxes). */
+  html { zoom: 0.82; }
 
   html, body {
-    background: #fff !important;
-    color: #1D1D1F !important;
-    font-size: 11px;                 /* the layout is built for a 1400px screen; step it down */
+    background: var(--ti-00) !important;
+    color: var(--ti-100) !important;
+    font-size: 11px;
   }
+  body::before { display: none !important; }
 
-  /* Print the light theme even if the user is looking at dark mode. */
+  /* Print Natural Titanium even when the reader is looking at Black Titanium. This is
+     the finish that was designed for paper — the same forty-two roles, re-pointed. */
   html.dark {
-    --ink: 29, 29, 31;
-    --text: #1D1D1F;
-    --glass-bg: #fff;
-    --glass-border: rgba(0,0,0,.10);
-    --glass-shadow: none;
-    --card: #fff;
+    --surface-canvas: var(--ti-00);
+    --surface-grouped: var(--ti-05);
+    --surface-raised: var(--ti-00);
+    --surface-glass: var(--ti-00);
+    --content-primary: var(--ti-100);
+    --content-secondary: var(--ti-70);
+    --content-tertiary: var(--ti-60);
+    --content-quaternary: var(--ti-40);
+    --content-accent: var(--au-70);
+    --content-on-accent: var(--ti-00);
+    --stroke-hairline: rgba(var(--ti-100-rgb), .12);
+    --stroke-rim: rgba(var(--ti-100-rgb), .16);
+    --fill-quiet: rgba(var(--ti-100-rgb), .05);
+    --fill-accent: linear-gradient(168deg, var(--au-50), var(--au-70));
+    --accent-rgb: var(--au-70-rgb);
+    --glow-accent: transparent;
+    --sig-nominal: #1C7430;
+    --sig-caution: #7A5606;
+    --sig-abort: #D70015;
+    --e1: none; --e2: none; --e3: none; --e4: none; --e5: none;
   }
 
-  /* The animated backdrop is a 4-gradient stack. On paper it is a muddy smear and it
-     costs a fortune in toner. */
-  body::before, body::after { display: none !important; }
-
-  /* ── Kill the chrome. Anything that only exists to be clicked. ──────────────── */
-  .island, .no-print,
-  button, a[href^="/"] { display: none !important; }
+  /* Kill the chrome. Anything that only exists to be clicked. */
+  .island, .no-print, button, a[href^="/"] { display: none !important; }
 
   /* The Account Explorer is 15 rows of a server-paginated table. On paper it is a
-     meaningless fragment of a 7,042-row list and it eats three pages. Everything it
-     can tell you is already above it, and the Top-20 table carries the accounts that
-     actually matter. It is a tool for interrogating the book live, not a thing you file. */
+     meaningless fragment of a 1,179-row list and it eats three pages. */
   .no-print-explorer { display: none !important; }
 
-  /* ── The container. The screen layout is centred in a max-width column with its own
-     padding; on paper the @page margin IS the margin, so strip the double gutter or
-     the content ends up floating in the middle of the sheet. ──────────────────── */
   .page-shell {
     max-width: none !important;
     width: 100% !important;
@@ -202,102 +640,64 @@ select {
     padding: 0 !important;
   }
 
-  /* ── The cover ─────────────────────────────────────────────────────────────── */
   .print-only { display: block !important; }
   .print-cover {
-    break-after: page;
-    page-break-after: always;
-    break-inside: avoid;
-    page-break-inside: avoid;
+    break-after: page; page-break-after: always;
+    break-inside: avoid; page-break-inside: avoid;
   }
   .print-cover > .cover-provenance { margin-top: 22px !important; }
   .print-cover > .cover-strip { margin-top: 18px !important; }
 
-  /* The on-screen hero is a 56px gradient headline and a 52px top pad. It is a
-     landing-page device. The cover has already said all of it, better. */
+  /* The on-screen hero is a Colossus headline and a 48 px top pad — a landing-page
+     device. The cover has already said all of it, better. */
   .hero { display: none !important; }
 
-  /* The custom running footer is NOT printed. `position: fixed` is not a running header
-     in Chrome's paged media engine — it paints the element once, at a viewport offset,
-     which lands it straight on top of the content instead of in the bottom margin. It
-     was printing across the KPI cards. Chrome's own header/footer already carries the
-     date, the title, the URL and "page x of y". */
+  /* position: fixed is not a running header in Chrome's paged-media engine: it paints
+     once, at a viewport offset, landing on top of the content. Chrome's own footer
+     already carries the date, the title and "page x of y". */
   .print-footer { display: none !important; }
 
-  /* ── Cards: never sliced across a page break ───────────────────────────────── */
   .card, .print-block {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     box-shadow: none !important;
-    border: 1px solid rgba(0,0,0,.13) !important;
+    border: 1px solid rgba(var(--ti-100-rgb), .13) !important;
     border-radius: 10px !important;
-    padding: 13px 15px !important;   /* 26px of screen padding is a luxury on A4 */
-    background: #fff !important;
+    padding: 13px 15px !important;
+    background: #FFF !important;
+    backdrop-filter: none !important;
     margin: 0 !important;
   }
 
-  /* …EXCEPT the long tables. `break-inside: avoid` on a card taller than half a sheet
-     is a guarantee of white space: it cannot fit in the remainder of the page, so it
-     jumps to the next one and leaves a third of a sheet blank behind it. Do that three
-     times and the "report" is mostly paper.
+  /* …EXCEPT the long tables. A table is the one thing that survives a page break
+     gracefully — its header repeats — so tables flow and everything else stays whole. */
+  .print-breakable { break-inside: auto !important; page-break-inside: auto !important; }
 
-     A table is the one thing that survives a page break gracefully — its header repeats
-     (thead: table-header-group, below) so the second half is still readable. So tables
-     are allowed to flow, and everything else stays whole. That is the difference between
-     a document that reads as designed and one that reads as printed-by-accident. */
-  .print-breakable {
-    break-inside: auto !important;
-    page-break-inside: auto !important;
-  }
-
-  /* Tighter gutters. 16px of gap was tuned for a 1440px screen; on a 269mm page it just
-     pushes the columns apart and wastes the margin. */
   .page-shell > div[style*="grid"] { gap: 10px !important; margin-bottom: 10px !important; }
   .card + .card, .page-shell > .card { margin-bottom: 10px !important; }
 
-  /* ── Tables ────────────────────────────────────────────────────────────────── */
-  /* overflow-x:auto CLIPS in print — the L2 cross-tab and the disposition table would
-     arrive with their right-hand columns sliced clean off the page, and the reader
-     would have no way of knowing anything was missing. Let them lay out full width. */
-  .table-scroll {
-    overflow: visible !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-  }
-  .table-scroll table {
-    min-width: 0 !important;
-    width: 100% !important;
-    font-size: 9px !important;
-    table-layout: auto !important;
-  }
-  .table-scroll th, .table-scroll td {
-    padding: 5px 6px !important;
-    white-space: normal !important;
-  }
-  /* If a table does have to break, carry its header onto the next page. A page of
-     unlabelled numbers is worse than no page. */
+  /* overflow-x: auto CLIPS in print — the cross-tab would arrive with its right-hand
+     columns sliced clean off and the reader would have no way of knowing. */
+  .table-scroll { overflow: visible !important; padding-left: 0 !important; padding-right: 0 !important; }
+  .table-scroll table { min-width: 0 !important; width: 100% !important; font-size: 9px !important; table-layout: auto !important; }
+  .table-scroll th, .table-scroll td { padding: 5px 6px !important; white-space: normal !important; }
   thead { display: table-header-group !important; }
-  tr    { break-inside: avoid !important; page-break-inside: avoid !important; }
+  tr { break-inside: avoid !important; page-break-inside: avoid !important; }
 
-  /* ── Typography ────────────────────────────────────────────────────────────── */
   h1, h2, h3 { break-after: avoid !important; page-break-after: avoid !important; }
 
-  /* The hero headline is a gradient clipped to the glyphs, so the text itself is
-     transparent. On paper the browser drops the background and the words vanish
-     entirely. Repaint solid wherever that trick is used. */
-  .print-solid-text {
+  /* The metal is a background clipped to the glyphs, so the text itself is transparent.
+     On paper the browser drops the background and the words vanish entirely. */
+  .print-solid-text, .u-metal {
     background: none !important;
-    -webkit-text-fill-color: #1D1D1F !important;
-    color: #1D1D1F !important;
+    -webkit-text-fill-color: var(--ti-100) !important;
+    color: var(--ti-100) !important;
+    filter: none !important;
   }
 
-  /* Charts mid-animation print as half-drawn bars — a 48.7% ring frozen at 12%.
-     Freeze everything at its final state. */
-  *, *::before, *::after {
-    animation: none !important;
-    transition: none !important;
-  }
+  /* A chart mid-animation prints as a half-drawn bar — a 48.7% ring frozen at 12%. */
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .u-grow { transform: none !important; }
 
-  /* SVG (the AI-connection ring) must not be scaled away by the smaller root font. */
   svg { max-width: 100% !important; height: auto !important; }
 }

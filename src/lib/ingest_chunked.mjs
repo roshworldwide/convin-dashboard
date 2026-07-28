@@ -187,17 +187,13 @@ async function recomputeDayTotalLocal(iso, disp, entry) {
   await writeJson(manPath, man);
 }
 
-/* Rows for ONE batch. db.mjs has forEachRowOfDate; this is its per-batch twin. */
+/* Rows for ONE batch. db.mjs has forEachRowOfDate; this is its per-batch twin.
+   The column list is IMPORTED, not repeated — a local copy is how a batch quietly
+   commits without the columns a new section needs, and the only symptom is a section
+   that renders empty on that one day. */
 async function forEachRowOfBatch(batchId, onRow) {
-  const { getPool } = await import('./db.mjs');
+  const { getPool, DATA_COLS } = await import('./db.mjs');
   const pool = await getPool();
-  const cols = [
-    'account_no', 'customer_name', 'status', 'goal_achieved', 'qual_status', 'disp_l1', 'disp_l2',
-    'ai_attempts', 'ai_connected_calls', 'ai_connected_seconds', 'minimum_amount_due', 'total_outstanding',
-    'total_accounts_with_customer', 'months_on_book', 'curr_bal_band', 'region', 'primary_state',
-    'primary_city', 'mobile', 'model_logic', 'paid_flag', 'promise_flag', 'refusal_flag',
-    'refusal_reason', 'payment_mode', 'lead_link', 'segment', 'lead_score', 'last_call_at',
-  ];
-  const { rows } = await pool.query(`SELECT ${cols.join(',')} FROM account_rows WHERE batch_id = $1`, [batchId]);
+  const { rows } = await pool.query(`SELECT ${DATA_COLS.join(',')} FROM account_rows WHERE batch_id = $1`, [batchId]);
   for (const r of rows) onRow(r);
 }

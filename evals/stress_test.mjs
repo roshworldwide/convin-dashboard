@@ -209,6 +209,133 @@ const INVARIANTS = [
     const thin = [...p.intel.dial, ...p.agg.duration].filter((d) => d.n > 0 && d.n < 30 && !d.thin);
     return thin.length ? `${thin[0].band || thin[0].bucket} has n=${thin[0].n} but is not flagged thin` : null;
   }],
+  /* ── THE AI CALL LOG (payload v9) ────────────────────────────────────────────
+     Every check below no-ops when the section is absent — a book uploaded without a
+     call log, or any report filed before v9, must aggregate exactly as it always did. */
+  ['the call-log section is absent, not empty, when there is no call log', (p) => {
+    const c = p.agg.callLog;
+    if (!c) return 'agg.callLog is missing entirely — the UI guards on it and would crash';
+    if (c.present) return null;
+    return (c.byHour?.length || c.byAttempt?.length || c.lines?.length)
+      ? 'callLog says present:false but is carrying rows' : null;
+  }],
+  ['a connect rate is never above 100% (per hour, per attempt, per line)', (p) => {
+    const c = p.agg.callLog;
+    if (!c?.present) return null;
+    const over = [
+      ...c.byHour.filter((h) => h.connected > h.attempts).map((h) => `hour ${h.hour}: ${h.connected}/${h.attempts}`),
+      ...c.byAttempt.filter((a) => a.connected > a.dialled).map((a) => `attempt ${a.attempt}: ${a.connected}/${a.dialled}`),
+      ...c.lines.filter((l) => l.connected > l.attempts).map((l) => `line ${l.line}: ${l.connected}/${l.attempts}`),
+    ];
+    return over.length ? over.slice(0, 3).join('; ') : null;
+  }],
+  ['connected calls never exceed dial attempts', (p) => {
+    const c = p.agg.callLog;
+    if (!c?.present) return null;
+    if (c.loggedConnected > c.loggedAttempts) return `${c.loggedConnected} answered of ${c.loggedAttempts} dialled`;
+    if (c.rates.attemptNumerator > c.rates.attemptDenominator) return 'attempt % numerator exceeds its denominator';
+    if (c.rates.voicemailCalls > c.loggedConnected) return `${c.rates.voicemailCalls} voicemails of ${c.loggedConnected} answered calls`;
+    return null;
+  }],
+  ['the hour and attempt curves never claim more dials than were logged', (p) => {
+    const c = p.agg.callLog;
+    if (!c?.present) return null;
+    const hourN = c.byHour.reduce((a, h) => a + h.attempts, 0);
+    const attN = c.byAttempt.reduce((a, x) => a + x.dialled, 0);
+    const lineN = c.lines.reduce((a, l) => a + l.attempts, 0);
+    if (hourN > c.loggedAttempts) return `hour chart holds ${hourN} dials, only ${c.loggedAttempts} were logged`;
+    if (attN > c.loggedAttempts) return `attempt chart holds ${attN} dials, only ${c.loggedAttempts} were logged`;
+    if (lineN > c.loggedAttempts) return `line table holds ${lineN} dials, only ${c.loggedAttempts} were logged`;
+    return null;
+  }],
+  ['the attempt-conversion curve accounts for every first payment, exactly once', (p) => {
+    const c = p.agg.callLog;
+    if (!c?.present) return null;
+    const sum = c.byAttempt.reduce((a, x) => a + x.firstPaid, 0);
+    if (sum !== c.firstPaidAccounts) return `curve holds ${sum} first payments, ${c.firstPaidAccounts} accounts have one`;
+    const last = c.byAttempt[c.byAttempt.length - 1];
+    if (c.firstPaidAccounts > 0 && Math.abs(last.cumFirstPaidPct - 100) > 0.001) {
+      return `the cumulative share ends at ${last.cumFirstPaidPct.toFixed(2)}%, not 100%`;
+    }
+    for (let i = 1; i < c.byAttempt.length; i++) {
+      if (c.byAttempt[i].cumFirstPaidPct < c.byAttempt[i - 1].cumFirstPaidPct - 1e-9) {
+        return `the cumulative curve goes DOWN at attempt ${c.byAttempt[i].attempt}`;
+      }
+    }
+    return null;
+  }],
+  ['a resolved count on the curve can never exceed the book\'s resolved count', (p) => {
+    const c = p.agg.callLog;
+    if (!c?.present) return null;
+    const res = c.byAttempt.reduce((a, x) => a + x.firstPaidResolved, 0);
+    if (res > p.agg.totals.resolved) return `${res} resolved on the curve, but only ${p.agg.totals.resolved} in the book`;
+    const bad = c.byAttempt.find((x) => x.firstPaidResolved > x.firstPaid);
+    return bad ? `attempt ${bad.attempt}: ${bad.firstPaidResolved} resolved of ${bad.firstPaid} that paid` : null;
+  }],
+  ['compliance counts can never exceed the book', (p) => {
+    const c = p.agg.callLog;
+    if (!c?.present) return null;
+    const N = p.agg.totals.accounts;
+    const over = [
+      ['complaints', c.complaints.accounts], ['DNC', c.dnc.accounts],
+      ['refused', c.dnc.refusedAccounts], ['promises', c.ptp.accounts],
+      ['accounts with a payment disposition', c.paidAccounts],
+    ].filter(([, v]) => v > N);
+    if (over.length) return `${over[0][0]} = ${over[0][1]} on a book of ${N}`;
+    if (c.dnc.redialledAccounts > c.dnc.accounts) return `${c.dnc.redialledAccounts} re-dialled of ${c.dnc.accounts} DNC accounts`;
+    if (c.complaints.alsoDnc > c.complaints.accounts) return 'more complaint+DNC accounts than complaint accounts';
+    if (c.ptp.resolved > c.ptp.accounts) return 'more promises kept than made';
+    return null;
+  }],
+  ['reached accounts never exceed the book, and human-reached never exceed reached', (p) => {
+    const c = p.agg.callLog;
+    if (!c?.present) return null;
+    const r = c.rates;
+    if (r.contactNumerator > r.contactDenominator) return `${r.contactNumerator} reached of ${r.contactDenominator} in the book`;
+    if (r.humanReached > r.contactNumerator) return `${r.humanReached} reached by a human, but only ${r.contactNumerator} reached at all`;
+    return null;
+  }],
+  ['the intensity distributions account for every account in the book', (p) => {
+    const c = p.agg.callLog;
+    if (!c?.present) return null;
+    const N = p.agg.totals.accounts;
+    const a = c.intensity.distribution.reduce((s, d) => s + d.accounts, 0);
+    const b = c.intensity.contactDistribution.reduce((s, d) => s + d.accounts, 0);
+    if (a !== N) return `attempt bands hold ${a} accounts, the book has ${N}`;
+    if (b !== N) return `contact bands hold ${b} accounts, the book has ${N}`;
+    return null;
+  }],
+  ['the AI-cohort split accounts for every account and every rupee', (p) => {
+    const c = p.agg.cohorts;
+    if (!c) return 'agg.cohorts is missing — the UI guards on it';
+    if (!c.length) return p.agg.totals.accounts === 0 ? null : 'no cohorts on a non-empty book';
+    const n = c.reduce((a, x) => a + x.count, 0);
+    const rec = c.reduce((a, x) => a + x.recovered, 0);
+    if (n !== p.agg.totals.accounts) return `cohorts hold ${n} accounts, the book has ${p.agg.totals.accounts}`;
+    return near(rec, p.agg.totals.recovered, 1) ? null
+      : `cohorts recovered ${rec.toFixed(0)}, the book recovered ${p.agg.totals.recovered.toFixed(0)}`;
+  }],
+  /* ── ANONYMISATION ────────────────────────────────────────────────────────────
+     The deliverable must not carry a customer name or a phone number ANYWHERE — it
+     is printed to PDF and handed out through share links that have no login on them.
+     These two checks are the whole guarantee, so they are checked on every book. */
+  ['the Top-20 carries a masked reference, never a customer name', (p) => {
+    for (const r of p.agg.topOutstanding) {
+      if ('name' in r) return 'topOutstanding still has a `name` field — that is the customer';
+      if (!r.ref) return 'topOutstanding row has no masked reference';
+      if (/\d{7,}/.test(String(r.ref))) return `the "mask" ${r.ref} still holds ${String(r.ref).replace(/\D/g, '').length} digits`;
+    }
+    return null;
+  }],
+  ['no phone number or full account number survives anywhere in the payload', (p) => {
+    const blob = JSON.stringify(p);
+    const mobile = blob.match(/(?<![\d.])[6-9]\d{9}(?![\d.])/g) || [];
+    const account = blob.match(/(?<![\d.])\d{15,19}(?![\d.])/g) || [];
+    if (mobile.length) return `${mobile.length} mobile-shaped number(s), e.g. ${mobile[0]}`;
+    if (account.length) return `${account.length} account-shaped number(s), e.g. ${account[0]}`;
+    return null;
+  }],
+
   ['headline resolution is the FULL book, never the measurable subset', (p) => {
     // The blind guard must never quietly restate RBL's own numbers. It trims the
     // behavioural charts and nothing else.
@@ -222,6 +349,57 @@ const INVARIANTS = [
 
 /* ── The adversarial books. Each is something a bank could really send. ─────── */
 const N = (n, f) => Array.from({ length: n }, (_, i) => f(i));
+
+/* ── Rows carrying rolled-up AI CALL LOG data ─────────────────────────────────
+   Built the way calllog.mjs builds them, so the mask, the histograms and the three
+   legacy call counters can never disagree — which is exactly what the invariants above
+   are checking. `connectEvery: 0` means nobody ever picked up. */
+const calls = (o = {}) => {
+  const {
+    attempts = 6, connectEvery = 3, hours = ['10', '14'], lines = ['1111', '2222'],
+    firstPaid = 0, dncAt = 0, secs = 60, voicemail = 0, gapAt = 0, ...rest
+  } = o;
+
+  let mask = '';
+  const hourHist = new Map();
+  const lineHist = new Map();
+  let placed = 0;
+  let connected = 0;
+  for (let n = 1; n <= attempts; n++) {
+    if (n === gapAt) { mask += '-'; continue; }          // an attempt number that does not exist
+    const on = connectEvery > 0 && n % connectEvery === 0;
+    mask += on ? '1' : '0';
+    placed++; if (on) connected++;
+    const h = hours[(n - 1) % hours.length];
+    const l = lines[(n - 1) % lines.length];
+    for (const [m, k] of [[hourHist, h], [lineHist, l]]) {
+      const e = m.get(k) || { attempts: 0, connected: 0 };
+      e.attempts++; if (on) e.connected++;
+      m.set(k, e);
+    }
+  }
+  const enc = (m) => [...m.entries()].sort().map(([k, v]) => `${k}:${v.attempts}:${v.connected}`).join('|');
+  const dialsAfterDnc = dncAt > 0
+    ? mask.split('').filter((c, i) => i + 1 > dncAt && c !== '-').length : 0;
+
+  return row({
+    ai_attempts: placed,
+    ai_connected_calls: connected,
+    ai_connected_seconds: connected * secs,
+    attempt_mask: mask,
+    max_attempt: attempts,
+    attempts_by_hour: enc(hourHist),
+    outbound_lines: enc(lineHist),
+    attempt_first_paid: firstPaid,
+    dnc_attempt: dncAt,
+    dials_after_dnc: dialsAfterDnc,
+    voicemail_calls: Math.min(voicemail, connected),
+    voicemail_seconds: Math.min(voicemail, connected) * 12,
+    dnc_flag: dncAt > 0,
+    ai_agency: 'Convin_NEW',
+    ...rest,
+  });
+};
 
 const CASES = {
   'empty book (0 rows)': [],
@@ -271,6 +449,51 @@ const CASES = {
   // The lead export has no timestamp column at all. The guard must simply not fire.
   'no call dates in the export at all': N(300, (i) => row({
     last_call_at: '', status: i % 3 ? 'Unresolved' : 'Resolved',
+  })),
+
+  /* ── Books carrying the AI call log ──────────────────────────────────────── */
+  'a realistic call-log book': N(500, (i) => calls({
+    attempts: 1 + (i % 18),
+    connectEvery: i % 7 === 0 ? 0 : 2 + (i % 3),
+    hours: ['08', '11', '14', '17'].slice(0, 1 + (i % 4)),
+    firstPaid: i % 3 === 0 ? 1 + (i % 9) : 0,
+    dncAt: i % 23 === 0 ? 2 : 0,
+    voicemail: i % 4 === 0 ? 1 : 0,
+    status: i % 3 ? 'Unresolved' : 'Resolved',
+    disp_l2: i % 3 === 0 ? 'Paid' : i % 5 === 0 ? 'Promise to Pay Later' : 'Follow-Up',
+    ptp_flag: i % 5 === 0,
+    complaint_flag: i % 11 === 0,
+    refused_flag: i % 13 === 0,
+    last_call_at: '2026-07-16',
+  })),
+  /* The call log covers only part of the book. The accounts it does not cover were
+     never dialled, and the section must count them as such rather than shrink to fit. */
+  'a call log that covers only half the book': N(400, (i) => (i % 2
+    ? calls({ attempts: 5, connectEvery: 2, firstPaid: i % 6 === 0 ? 3 : 0, status: i % 3 ? 'Unresolved' : 'Resolved', last_call_at: '2026-07-16' })
+    : row({ status: i % 3 ? 'Unresolved' : 'Resolved', ai_attempts: 0, ai_connected_calls: 0, ai_connected_seconds: 0 }))),
+  /* A Day Total that unions a day filed with the OLD per-account lead export against a
+     day filed with the new per-attempt call log. The curves can only be drawn over the
+     half that has attempts, and they must say so instead of dividing by the whole book. */
+  'a mixed book — half from the old lead export, half from the call log': N(400, (i) => (i % 2
+    ? calls({ attempts: 6, connectEvery: 3, status: i % 3 ? 'Unresolved' : 'Resolved' })
+    : row({ ai_attempts: 9, ai_connected_calls: 2, ai_connected_seconds: 140, status: i % 3 ? 'Unresolved' : 'Resolved' }))),
+  'every DNC account was dialled again afterwards': N(200, (i) => calls({
+    attempts: 12, connectEvery: 4, dncAt: 3, status: i % 3 ? 'Unresolved' : 'Resolved', complaint_flag: true,
+  })),
+  'an account whose attempt numbers have a hole in them': N(200, (i) => calls({
+    attempts: 9, connectEvery: 3, gapAt: 5, status: i % 3 ? 'Unresolved' : 'Resolved',
+  })),
+  'nobody answered a single call in the whole log': N(200, (i) => calls({
+    attempts: 14, connectEvery: 0, status: i % 4 ? 'Unresolved' : 'Resolved',
+  })),
+  'every answered call was voicemail': N(200, (i) => calls({
+    attempts: 8, connectEvery: 2, voicemail: 4, status: i % 4 ? 'Unresolved' : 'Resolved',
+  })),
+  'one account, one dial, one payment': [calls({ attempts: 1, connectEvery: 1, firstPaid: 1, status: 'Resolved' })],
+  'two AI cohorts in one book': N(300, (i) => calls({
+    attempts: 4 + (i % 5), connectEvery: 2,
+    ai_agency: i % 2 ? 'Convin_NEW' : 'Convin_AI_ONLY',
+    status: i % 3 ? 'Unresolved' : 'Resolved',
   })),
 
   'realistic book — promises are a trap': N(400, (i) => {

@@ -28,5 +28,16 @@
  *     cover and SURVIVES sanitizeForShare (unlike meta.sources, which does not)
  * v8  funnel stages 2 and 3 renamed "Total Leads Attempted" / "Total Leads
  *     Connected" — they count ACCOUNTS, not calls, and the old labels said calls
+ * v9  THE AI CALL LOG. The old Lead Outcome export (one row per account) is
+ *     replaced by a per-ATTEMPT export, and everything that needs an attempt to
+ *     exist arrives with it:
+ *       agg.callLog   hour-of-day, conversion by attempt number, attempt/contact
+ *                     intensity, the two contact rates, PTP generation and its
+ *                     conversion, complaints, DNC + the "did we call them again"
+ *                     compliance check, outbound lines, and notMeasured — the four
+ *                     figures that were asked for and are not in the data
+ *       agg.cohorts   AI-only vs AI+agency (one cohort today, wired for two)
+ *       agg.topOutstanding[].ref replaces .name — NO customer name is in the
+ *                     payload any more, so none can reach a PDF or a share link
  */
-export const PAYLOAD_VERSION = 8;
+export const PAYLOAD_VERSION = 9;

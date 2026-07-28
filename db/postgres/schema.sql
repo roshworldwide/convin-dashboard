@@ -36,12 +36,58 @@ CREATE TABLE IF NOT EXISTS account_rows (
   -- Not for charting. It is how the aggregator detects that the status file was
   -- pulled BEFORE the calls finished — see ALIASES.last_call_at in normalize.mjs.
   last_call_at                  text,
+
+  -- ── Rolled up from the AI CALL LOG (payload v9) ────────────────────────────
+  -- The call log has one row per call ATTEMPT — 18,883 of them for 1,417 accounts on
+  -- the real export. It is NOT stored at that grain. The canonical model of this app is
+  -- one row per account, and every guard that makes it trustworthy (the CYC spine, the
+  -- Day Total union, "re-uploading the book must not double the money") is keyed on the
+  -- account. A second grain would have none of them.
+  --
+  -- So the attempts are folded onto the account in the browser (src/lib/calllog.mjs) and
+  -- land in the columns below. The two histograms are compact text — "08:120:30|09:88:12"
+  -- is hour:attempts:connected — so that the hour-of-day and per-attempt curves can be
+  -- RE-DERIVED by the Aggregator from whatever set of accounts it is given. That is what
+  -- makes them survive the Day Total union instead of doubling with every re-upload.
+  ai_agency                     text,      -- which cohort worked it (AI-only vs AI+agency)
+  first_call_at                 text,      -- "YYYY-MM-DD" of the first dial
+  attempts_by_hour              text,      -- "HH:attempts:connected|…"
+  outbound_lines                text,      -- "last4:attempts:connected|…"  (trunk, NOT an agent)
+  attempt_mask                  text,      -- per attempt no: '1' answered '0' no answer '-' no such attempt
+  max_attempt                   integer,
+  attempt_first_paid            integer,   -- attempt no where a Paid disposition first landed, 0 = never
+  dnc_attempt                   integer,   -- attempt no where DNC was first logged, 0 = never
+  dials_after_dnc               integer,   -- dials placed AFTER that. The compliance number.
+  voicemail_calls               integer,   -- answered by a machine: a connect, and not a conversation
+  voicemail_seconds             integer,
+  complaint_flag                boolean,
+  dnc_flag                      boolean,
+  refused_flag                  boolean,
+  ptp_flag                      boolean,
+
   batch_id                      text NOT NULL,
   report_date                   date NOT NULL
 );
 
 -- Migration for databases created before v6. Safe to re-run.
 ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS last_call_at text;
+
+-- Migration for databases created before v9 (the AI call log). Safe to re-run.
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS ai_agency          text;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS first_call_at      text;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS attempts_by_hour   text;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS outbound_lines     text;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS attempt_mask       text;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS max_attempt        integer;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS attempt_first_paid integer;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS dnc_attempt        integer;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS dials_after_dnc    integer;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS voicemail_calls    integer;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS voicemail_seconds  integer;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS complaint_flag     boolean;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS dnc_flag           boolean;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS refused_flag       boolean;
+ALTER TABLE account_rows ADD COLUMN IF NOT EXISTS ptp_flag           boolean;
 
 -- Indexes for fast per-batch paging, filtering and sorting.
 CREATE INDEX IF NOT EXISTS idx_ar_batch            ON account_rows (batch_id);

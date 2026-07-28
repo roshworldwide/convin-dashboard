@@ -18,6 +18,7 @@
 import { readSheet, detectSheetKind } from './sheet.mjs';
 import { buildCanonicalRows } from './merge.mjs';
 import { autoMap } from './normalize.mjs';
+import { rollUpCallLog, applyCallLog } from './calllog.mjs';
 
 const CHUNK_ROWS = 2500;
 
@@ -73,18 +74,53 @@ export async function uploadFiles(files, { reportDate, slot = 1, mapping = null 
      book with the wrong denominator, and nothing downstream would notice. */
   const cyc = sheets.find((s) => s.kind === 'cyc');
   const primary = cyc || sheets[0];
-  const lookups = sheets.filter((s) => s !== primary);
+  /* The call log is pulled OUT of the lookup list. It has one row per call attempt, and
+     buildCanonicalRows joins one row per account — hand it over and 18,883 attempts
+     become 1,417 first-attempts, silently, with every call chart understated by an order
+     of magnitude and a green tick on the upload screen. It is folded on separately,
+     after the join, by applyCallLog(). */
+  const callSheets = sheets.filter((s) => s.kind === 'calllog');
+  const lookups = sheets.filter((s) => s !== primary && s.kind !== 'calllog');
 
   onProgress({ phase: 'joining', pct: 35, note: 'Joining on Account No…' });
 
-  const map = mapping || autoMap(sheets.flatMap((s) => s.rows[0]));
+  /* Auto-mapping reads the LOOKUP headers only. The call log carries "Lead Link" and
+     "Lead Name"; letting those into the mapping would offer a bank's own analyst a
+     column that resolves to nothing, and invite the PII columns back in through a door
+     we deliberately nailed shut in calllog.mjs. */
+  const map = mapping || autoMap(sheets.filter((s) => s.kind !== 'calllog').flatMap((s) => s.rows[0]));
   const { rows: canon, stats, warnings } = buildCanonicalRows(
     primary.rows, lookups.map((s) => s.rows), map, lookups.map((s) => s.name),
   );
 
+  /* ── The AI call log ────────────────────────────────────────────────────────
+     Parsed and rolled up HERE, in the browser, for the same reason as everything else:
+     the file is 9 MB and Vercel refuses a request body over 4.5 MB. What crosses the
+     wire is the rolled-up account, not the attempt. */
+  let callStats = null;
+  for (const s of callSheets) {
+    onProgress({ phase: 'joining', pct: 38, note: `Rolling up ${s.name}…` });
+    const log = rollUpCallLog(s.rows);
+    const applied = applyCallLog(canon, log, { name: s.name });
+    warnings.push(...applied.warnings);
+    callStats = {
+      file: s.name,
+      attempts: log.stats.attempts,
+      logAccounts: log.stats.accounts,
+      connected: log.stats.connected,
+      voicemail: log.stats.voicemail,
+      dates: log.stats.dates,
+      maxAttempt: log.stats.maxAttempt,
+      ...applied,
+    };
+    delete callStats.warnings;
+  }
+
   const sources = sheets.map((s) => ({
     slot: s === primary ? (cyc ? 'CYC / PDD (primary)' : 'Merged sheet')
-      : (s.kind === 'status' ? 'Status' : s.kind === 'leads' ? 'Lead outcome' : 'Additional'),
+      : (s.kind === 'status' ? 'Status'
+        : s.kind === 'calllog' ? 'AI call log'
+          : s.kind === 'leads' ? 'Lead outcome' : 'Additional'),
     name: s.name,
     rows: Math.max(0, s.rows.length - 1),
     detected: s.kind,
@@ -111,5 +147,5 @@ export async function uploadFiles(files, { reportDate, slot = 1, mapping = null 
   const res = await post({ phase: 'commit', batchId, ...meta });
 
   onProgress({ phase: 'done', pct: 100, note: 'Done.' });
-  return { ...res, stats, warnings, sheets: sources };
+  return { ...res, stats, warnings, sheets: sources, callStats };
 }

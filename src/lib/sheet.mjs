@@ -44,9 +44,17 @@ export function detectSheetKind(headers) {
   const h = new Set((headers || []).map((x) => String(x ?? '').trim().toLowerCase()));
   const hasAll = (...ks) => ks.every((k) => h.has(k));
 
+  /* The AI CALL LOG, checked FIRST and deliberately.
+     It is the only file with one row per call ATTEMPT, and it must never be treated as
+     a per-account lookup sheet: joined that way, 18,883 attempts collapse onto whichever
+     attempt happened to appear first in the file, and the dashboard would report a
+     one-dial campaign. "Attempt Number" appears in no other file we ingest, so this is
+     unambiguous. See calllog.mjs. */
+  if (h.has('external id') && h.has('attempt number')
+    && (h.has('call answered timestamp') || h.has('call timestamp'))) return 'calllog';
   // Status file: two columns, and one of them is the outcome. Distinctive.
   if (h.has('status') && (h.has('account_no') || h.has('account no')) && h.size <= 4) return 'status';
-  // Lead outcome: only Convin's export has the AI call telemetry.
+  // Lead outcome (the file the call log replaces): one row per account, with totals.
   if (hasAll('total ai call attempts') || h.has('ai connected seconds')) return 'leads';
   // CYC / PDD: the bank's portfolio.
   if (h.has('bill cycle') || h.has('curr bal band') || h.has('portfolio(pdd)')) return 'cyc';

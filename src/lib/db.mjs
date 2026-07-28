@@ -18,14 +18,26 @@ export async function getPool() {
   return _pool;
 }
 
-const COLS = [
+/* THE canonical column list. Exported, and imported by everything that reads a row back
+   (ingest_chunked.mjs, scripts/rebuild_db.mjs) — there used to be three hand-maintained
+   copies of it, which is fine right up until someone adds a column to two of them. The
+   AI call log added fifteen at once, so it stops being a copy now.
+
+   Order is load-bearing: insertRows() builds its placeholders and its parameters from
+   this array, in this order. */
+export const DATA_COLS = [
   'account_no', 'customer_name', 'status', 'goal_achieved', 'qual_status', 'disp_l1', 'disp_l2',
   'ai_attempts', 'ai_connected_calls', 'ai_connected_seconds', 'minimum_amount_due', 'total_outstanding',
   'total_accounts_with_customer', 'months_on_book', 'curr_bal_band', 'region', 'primary_state',
   'primary_city', 'mobile', 'model_logic', 'paid_flag', 'promise_flag', 'refusal_flag',
   'refusal_reason', 'payment_mode', 'lead_link', 'segment', 'lead_score', 'last_call_at',
-  'batch_id', 'report_date',
+  // Rolled up from the AI call log — see calllog.mjs and db/postgres/schema.sql.
+  'ai_agency', 'first_call_at', 'attempts_by_hour', 'outbound_lines', 'attempt_mask',
+  'max_attempt', 'attempt_first_paid', 'dnc_attempt', 'dials_after_dnc',
+  'voicemail_calls', 'voicemail_seconds',
+  'complaint_flag', 'dnc_flag', 'refused_flag', 'ptp_flag',
 ];
+const COLS = [...DATA_COLS, 'batch_id', 'report_date'];
 
 // Bulk insert canonical rows for a batch (batched multi-row INSERT, ~1000/stmt).
 export async function insertRows(rows, batchId, reportDate) {
@@ -41,14 +53,13 @@ export async function insertRows(rows, batchId, reportDate) {
         const base = j * COLS.length;
         const ph = COLS.map((_, k) => `$${base + k + 1}`);
         values.push(`(${ph.join(',')})`);
-        params.push(
-          r.account_no, r.customer_name, r.status, r.goal_achieved, r.qual_status, r.disp_l1, r.disp_l2,
-          r.ai_attempts, r.ai_connected_calls, r.ai_connected_seconds, r.minimum_amount_due, r.total_outstanding,
-          r.total_accounts_with_customer, r.months_on_book, r.curr_bal_band, r.region, r.primary_state,
-          r.primary_city, r.mobile, r.model_logic, r.paid_flag, r.promise_flag, r.refusal_flag,
-          r.refusal_reason, r.payment_mode, r.lead_link, r.segment, r.lead_score,
-          r.last_call_at || null, batchId, reportDate,
-        );
+        // Driven off DATA_COLS rather than a parallel hand-written list, so a column can
+        // never again land in a different slot from its own value.
+        for (const c of DATA_COLS) {
+          const v = r[c];
+          params.push(v === undefined ? null : v);
+        }
+        params.push(batchId, reportDate);
       });
       await client.query(`INSERT INTO account_rows (${COLS.join(',')}) VALUES ${values.join(',')}`, params);
     }
@@ -102,8 +113,7 @@ export async function getPayload(id) {
 // Stream all rows for a report_date through a callback (for Day Total recompute).
 export async function forEachRowOfDate(reportDate, onRow) {
   const pool = await getPool();
-  const dataCols = COLS.slice(0, COLS.length - 2); // everything except batch_id / report_date
-  const { rows } = await pool.query(`SELECT ${dataCols.join(',')} FROM account_rows WHERE report_date = $1`, [reportDate]);
+  const { rows } = await pool.query(`SELECT ${DATA_COLS.join(',')} FROM account_rows WHERE report_date = $1`, [reportDate]);
   for (const r of rows) onRow(r);
 }
 

@@ -24,23 +24,18 @@
  * writes every batch through it.
  * ───────────────────────────────────────────────────────────────────────────── */
 
-import { getPool, listBatches, getPayload, upsertBatch, forEachRowOfDate } from '../src/lib/db.mjs';
+import { getPool, listBatches, getPayload, upsertBatch, forEachRowOfDate, DATA_COLS } from '../src/lib/db.mjs';
 import { Aggregator } from '../src/lib/aggregate.mjs';
 import { PAYLOAD_VERSION } from '../src/lib/payload_version.mjs';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const displayDate = (iso) => { const [y, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS[m - 1]} ${y}`; };
 
-/* Must stay in lockstep with forEachRowOfBatch in ingest_chunked.mjs. If a column is
-   added there and forgotten here, the rebuild silently drops it — and the payload it
-   writes would be WORSE than the stale one it replaced. */
-const COLS = [
-  'account_no', 'customer_name', 'status', 'goal_achieved', 'qual_status', 'disp_l1', 'disp_l2',
-  'ai_attempts', 'ai_connected_calls', 'ai_connected_seconds', 'minimum_amount_due', 'total_outstanding',
-  'total_accounts_with_customer', 'months_on_book', 'curr_bal_band', 'region', 'primary_state',
-  'primary_city', 'mobile', 'model_logic', 'paid_flag', 'promise_flag', 'refusal_flag',
-  'refusal_reason', 'payment_mode', 'lead_link', 'segment', 'lead_score', 'last_call_at',
-];
+/* The column list is IMPORTED from db.mjs. It used to be a hand-copied third replica,
+   with a comment asking whoever edited it to remember two other files — and a rebuild
+   that silently drops a column writes a payload WORSE than the stale one it replaced,
+   which is the failure this whole script exists to prevent. One list now. */
+const COLS = DATA_COLS;
 
 const pool = await getPool();
 const batches = await listBatches();
