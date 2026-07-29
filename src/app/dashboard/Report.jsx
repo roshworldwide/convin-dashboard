@@ -1065,7 +1065,9 @@ export default function Report({ shareToken = null }) {
   /* Ink, always. The hour and attempt charts plot a rate, and a rate is a quantity.
      Only the three best-performing windows are marked, once, below the chart. */
   const connColor = () => AU.secondary;
-  const cohorts = A.cohorts || [];
+  // AI-agency cohorts still computed in the aggregator; card removed at client request.
+  // Prefixed so lint knows the non-use is deliberate, not a mistake.
+  const _cohorts = A.cohorts || [];
 
   /* ── FUNNEL GEOMETRY ──────────────────────────────────────────────────────────
      Every width on this chart is proportional to the stage's share of the book. There
@@ -1814,10 +1816,12 @@ export default function Report({ shareToken = null }) {
             each with its denominator written out. */}
         {R && (
           <Card span={12} style={{ marginBottom: 16 }}>
-            <Title t="AI call percentage — total leads vs AI connected leads" s="How much of RBL's book the AI actually reached — measured per lead, not per dial" />
+            <Title t="AI connection rate — accounts reached vs total accounts" s="How many of RBL's accounts the AI actually reached — measured per account, not per dial" />
             <div style={{ display: 'grid', gridTemplateColumns: '210px 1fr 300px', gap: 26, alignItems: 'center' }}>
 
-              {/* The headline rate, as a ring. */}
+              {/* The headline rate, as a ring. Just the number inside — the label used to
+                  sit at the bottom of the hole and spilled onto the ring stroke. It lives
+                  under the ring now, where it has room. */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <svg viewBox="0 0 120 120" style={{ width: 168, height: 168 }}>
                   <circle cx="60" cy="60" r="52" fill="none" stroke={ink(.09)} strokeWidth="13" />
@@ -1827,23 +1831,23 @@ export default function Report({ shareToken = null }) {
                     transform="rotate(-90 60 60)"
                     style={{ transition: 'stroke-dasharray 1.2s cubic-bezier(.32,.72,0,1)' }}
                   />
-                  <text x="60" y="58" textAnchor="middle" fontSize="22" fontWeight="700" fill="currentColor" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  <text x="60" y="70" textAnchor="middle" fontSize="28" fontWeight="700" fill="currentColor" style={{ fontVariantNumeric: 'tabular-nums' }}>
                     {R.connectionRatePct.toFixed(1)}%
                   </text>
-                  <text x="60" y="74" textAnchor="middle" fontSize="10" fill="currentColor" opacity="0.5" letterSpacing="0.5">
-                    AI CONNECTION RATE
-                  </text>
                 </svg>
-                <div style={{ fontSize: 12, color: txt(.45), textAlign: 'center', marginTop: 2 }}>
-                  connected leads ÷ total leads
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.5), textAlign: 'center', marginTop: 6 }}>
+                  AI connection rate
+                </div>
+                <div style={{ fontSize: 12, color: txt(.45), textAlign: 'center', marginTop: 3 }}>
+                  connected accounts ÷ total accounts
                 </div>
               </div>
 
-              {/* Total leads vs connected leads, to scale. */}
+              {/* Total accounts vs connected accounts, to scale. */}
               <div>
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: txt(.7) }}>Total leads in the book</span>
+                    <span style={{ fontSize: 13, color: txt(.7) }}>Total accounts</span>
                     <span style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(R.totalLeads)}</span>
                   </div>
                   <div style={{ height: 22, borderRadius: 12, background: ink(.09) }} />
@@ -1855,7 +1859,7 @@ export default function Report({ shareToken = null }) {
                         voicemail — the machine answered. The human-only figure is on the
                         contact-rate card below; this one stays on the file's definition so
                         every connect number on the page agrees with every other. */}
-                    <span style={{ fontSize: 13, color: txt(.7) }}>AI connected leads <span style={{ color: txt(.42) }}>— the call was answered</span></span>
+                    <span style={{ fontSize: 13, color: txt(.7) }}>Connected accounts <span style={{ color: txt(.42) }}>— the call was answered</span></span>
                     <span style={{ fontSize: 22, fontWeight: 700, color: C.green, fontVariantNumeric: 'tabular-nums' }}>
                       {fmtInt(R.leadsConnected)} <span style={{ fontSize: 13, color: txt(.45), fontWeight: 500 }}>· {pct(R.connectionRatePct, 1)}</span>
                     </span>
@@ -1877,7 +1881,7 @@ export default function Report({ shareToken = null }) {
                 </div>
                 {R.neverAttempted > 0 && (
                   <div style={{ fontSize: 12, color: AU.caution, marginTop: 12 }}>
-                    {fmtInt(R.neverAttempted)} leads were never dialled at all — they are inside &quot;never reached&quot;.
+                    {fmtInt(R.neverAttempted)} accounts were never dialled at all — they are inside &quot;never reached&quot;.
                   </div>
                 )}
               </div>
@@ -1885,14 +1889,14 @@ export default function Report({ shareToken = null }) {
               {/* The other connection rate. Same word, different denominator. */}
               <div style={{ padding: '16px 18px', borderRadius: 16, background: 'transparent', border: `1px solid ${ink(.06)}` }}>
                 <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.45), marginBottom: 12 }}>
-                  Per dial, not per lead
+                  Per dial, not per account
                 </div>
                 {[
                   { l: 'Total dial attempts', v: fmtInt(R.callAttempts) },
                   { l: 'Calls connected', v: fmtInt(R.callsConnected) },
                   { l: 'Call connect rate', v: pct(R.callConnectRatePct, 1), hi: true },
-                  { l: 'Avg attempts per lead', v: R.avgAttemptsPerLead.toFixed(1) },
-                  { l: 'Avg dials to reach one lead', v: R.avgAttemptsToConnect.toFixed(1), hi: true },
+                  { l: 'Avg attempts per account', v: R.avgAttemptsPerLead.toFixed(1) },
+                  { l: 'Avg dials to reach one account', v: R.avgAttemptsToConnect.toFixed(1), hi: true },
                 ].map((r, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: i ? `1px solid ${ink(.07)}` : 'none' }}>
                     <span style={{ fontSize: 13, color: txt(.62) }}>{r.l}</span>
@@ -1900,7 +1904,7 @@ export default function Report({ shareToken = null }) {
                   </div>
                 ))}
                 <div style={{ fontSize: 11, color: txt(.42), marginTop: 10, lineHeight: 1.5 }}>
-                  This is <b>{pct(R.callConnectRatePct, 1)}</b>, not {pct(R.connectionRatePct, 1)} — a lead who never answers is dialled
+                  This is <b>{pct(R.callConnectRatePct, 1)}</b>, not {pct(R.connectionRatePct, 1)}{' '}— an account that never answers is dialled
                   many times and drags the per-dial figure down. Both are true. Don&apos;t quote one as the other.
                 </div>
               </div>
@@ -1924,7 +1928,7 @@ export default function Report({ shareToken = null }) {
                 <div style={{ fontSize: 12, color: txt(.45) }}>{fmtInt(R.resolvedNotConnected)} of {fmtInt(R.leadsNotConnected)} resolved</div>
               </div>
               <div style={{ flex: 1, minWidth: 320, fontSize: 13, color: txt(.72), lineHeight: 1.6 }}>
-                A lead the AI actually reached resolves{' '}
+                An account the AI actually reached resolves{' '}
                 <b style={{ color: AU.nominal }}>{(R.resolutionConnectedPct - R.resolutionNotConnectedPct).toFixed(1)} points higher</b>{' '}
                 than one it never got hold of.{' '}
                 {/* Say the quiet part before an analyst does. This is a comparison between two
@@ -1959,7 +1963,7 @@ export default function Report({ shareToken = null }) {
                 refuse, committed in a subtitle. */}
             <Title
               t="Attempt % and Contact % — the two rates, and their denominators"
-              s={`Per dial and per lead. They are not interchangeable: on this book they are ${Math.abs(CL.rates.contactPct - CL.rates.attemptPct).toFixed(1)} points apart.`}
+              s={`Per dial and per account. They are not interchangeable: on this book they are ${Math.abs(CL.rates.contactPct - CL.rates.attemptPct).toFixed(1)} points apart.`}
             />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16, marginBottom: 20 }}>
               {[
@@ -1969,7 +1973,7 @@ export default function Report({ shareToken = null }) {
                   n: 'How the dialler performs. One customer who never answers is dialled twenty times and drags this down twenty times.',
                 },
                 {
-                  l: 'Contact % (per lead)', v: pct(CL.rates.contactPct, 1), c: C.green,
+                  l: 'Contact % (per account)', v: pct(CL.rates.contactPct, 1), c: C.green,
                   d: `${fmtInt(CL.rates.contactNumerator)} accounts reached ÷ ${fmtInt(CL.rates.contactDenominator)} in the book`,
                   n: "How much of RBL's book we got hold of at all. This is the one an exec means.",
                 },
@@ -2406,68 +2410,10 @@ export default function Report({ shareToken = null }) {
           </Card>
         )}
 
-        {/* ═══════════════ AI-ONLY vs AI + AGENCY ═══════════════
-            The comparison RBL asked for: does an account the AI worked alone recover
-            differently from one an agency also touched?
-
-            On every CYC book we have been sent, the `AI Agency` column holds a single
-            value, so there is only one cohort and there is nothing to compare. This card
-            says exactly that rather than drawing one bar at 100% and letting it imply a
-            result — the same treatment, and the same code path, as the segment card above.
-            The moment a book arrives carrying two values, the comparison renders itself. */}
-        {cohorts.length > 0 && (
-          <Card span={12} style={{ marginBottom: 16 }}>
-            <Title t="AI-only vs AI + agency" s="Whether the accounts an agency also worked recovered differently — from the CYC file's own AI Agency column" />
-            {cohorts.length > 1 ? (
-              <div className="table-scroll" style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 760 }}>
-                  <thead>
-                    <tr>
-                      <th style={l2Th('left', 200)}>Cohort</th>
-                      <th style={l2Th('right', 90)}>Accounts</th>
-                      <th style={l2Th('right', 110)}>Outstanding</th>
-                      <th style={l2Th('right', 110)}>Recovered</th>
-                      <th style={l2Th('right', 96)}>Recovery %</th>
-                      <th style={l2Th('right', 96)}>Resolution %</th>
-                      <th style={l2Th('right', 96)}>Avg dials</th>
-                      <th style={l2Th('right', 96)}>Connect %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cohorts.map((c, i) => (
-                      <tr key={i} style={{ borderTop: `1px solid ${ink(.07)}` }}>
-                        <td style={{ padding: '11px 10px', fontWeight: 600, color: txt(.9) }}>{c.name}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(c.count)}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.72), fontVariantNumeric: 'tabular-nums' }}>{fmtCr(c.outstanding)}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', fontWeight: 700, color: AU.nominal, fontVariantNumeric: 'tabular-nums' }}>{fmtCr(c.recovered)}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.72), fontVariantNumeric: 'tabular-nums' }}>{pct(c.recoveryPct, 1)}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', fontWeight: 700, color: c.resolutionPct >= t.resolutionRatePct ? AU.nominal : AU.abort, fontVariantNumeric: 'tabular-nums' }}>{pct(c.resolutionPct, 1)}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>{c.avgAttempts.toFixed(1)}</td>
-                        <td style={{ padding: '11px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>{pct(c.connectPct, 1)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <div style={{ marginTop: 12, fontSize: 12, color: txt(.5), lineHeight: 1.6 }}>
-                  These cohorts were not randomly assigned — the bank decides which accounts an agency also works, and it
-                  does not decide at random. Read the gap as a difference between two groups of accounts, not as the effect
-                  of adding an agency.
-                </div>
-              </div>
-            ) : (
-              <div style={{ fontSize: 15, color: txt(.72), lineHeight: 1.65 }}>
-                Every account in this book carries the same value in the <b>AI Agency</b> column —{' '}
-                <b style={{ color: txt(.92) }}>{cohorts[0].name}</b> ({fmtInt(cohorts[0].count)} accounts,{' '}
-                {pct(cohorts[0].resolutionPct, 1)} resolved, {fmtCr(cohorts[0].recovered)} recovered). There is no second
-                cohort in the file, so there is no split to draw and no honest lift to claim.
-                <div style={{ marginTop: 10, color: txt(.55), fontSize: 13 }}>
-                  Send a book that marks AI-only accounts differently from AI+agency accounts and the comparison —
-                  recovery, resolution, dials and connect rate, side by side — appears here automatically.
-                </div>
-              </div>
-            )}
-          </Card>
-        )}
+        {/* The AI-only vs AI+Agency card was removed at the client's request (the CYC
+            `AI Agency` column currently carries a single value, so there is no split to
+            show). The cohort computation is left intact in the aggregator so the card can
+            be restored in one line the day a book arrives carrying two values. */}
 
         {/* ===== States + Dial efficiency ===== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
