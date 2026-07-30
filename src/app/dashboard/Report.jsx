@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { PAYLOAD_VERSION } from '@/lib/payload_version.mjs';
 import {
-  C as AU, T, NUM, glass, surface, Metal, fmtCr, fmtINR, fmtInt, pct, mmss, fmtDay,
+  C as AU, T, NUM, glass, surface, Metal, fmtCr, fmtInt, pct, mmss, fmtDay,
 } from '../aurum';
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -58,6 +58,17 @@ const C = {
    hues would hide that ordering behind a legend. */
 const RAMP = ['var(--ramp-1)', 'var(--ramp-2)', 'var(--ramp-3)', 'var(--ramp-4)', 'var(--ramp-5)', 'var(--ramp-6)'];
 const ramp = (i) => RAMP[i % RAMP.length];
+
+/* RBL's own risk grade is one of the few places a literal colour is CORRECT rather than
+   decorative — Red / Amber / Green is a traffic light the bank already reads that way, so
+   the bar wears the grade's own colour. Anything we don't recognise falls back to the
+   ordered ramp. Kept out of the aurum signal palette on purpose: these are the client's
+   category colours, not our UI state. */
+const SEG_HEX = {
+  red: '#FF3B30', amber: '#FF9500', orange: '#FF7A00',
+  yellow: '#FFCC00', green: '#34C759', blue: '#0071E3',
+};
+const segColor = (name, i) => SEG_HEX[String(name || '').trim().toLowerCase()] || ramp(i);
 /* The funnel's internal coordinate width. The SVG scales to its container, so this is
    just the aspect ratio — a wider number means a shallower, more elegant taper. */
 const FW = 560;
@@ -364,7 +375,7 @@ function SummaryView({ s }) {
   const multi = s.trend.length > 1;
 
   const head = [
-    { l: 'Recovered Amount', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of outstanding`, c: C.green },
+    { l: 'Recovered Total Outstanding', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of outstanding`, c: C.green },
     { l: 'Accounts Resolved', v: fmtInt(t.resolved), s: `${pct(t.resolutionRatePct, 1)} of ${fmtInt(t.accounts)}`, c: C.blue },
     { l: 'Outstanding Amount', v: fmtCr(t.sumOut), s: `${fmtInt(t.accounts)} accounts`, c: C.indigo },
     { l: 'Still Open', v: fmtCr(t.outstandingPending), s: `${fmtInt(t.unresolved)} accounts`, c: C.orange },
@@ -574,13 +585,13 @@ function SummaryView({ s }) {
    One component, two doors.
 
      shareToken = null   →  the internal dashboard. Session cookie, date navigator,
-                            upload tabs, Account explorer, print button.
+                            upload tabs, print button.
 
      shareToken = "..."  →  a PRIVATE SHARE LINK. No cookie, no login, no navigation
-                            off this one report. Names in the Top-20 arrive already
-                            masked from the server, and the Account explorer is not
-                            rendered — so the holder of the link cannot reach a single
-                            customer's name, mobile or account number.
+                            off this one report. There is no per-customer table in the
+                            product any more — not for the link holder and not for a
+                            signed-in user — so no name, mobile or account number is
+                            rendered anywhere, by anyone.
 
    The two doors share the same body on purpose. A separate "export" template is how
    you end up with a shared report that quietly disagrees with the one you rehearsed. */
@@ -604,16 +615,6 @@ export default function Report({ shareToken = null }) {
   ));
   const [name, setName] = useState('');
 
-  // explorer
-  const [q, setQ] = useState('');
-  const [fStatus, setFStatus] = useState('All');
-  const [fRegion, setFRegion] = useState('All');
-  const [fBand, setFBand] = useState('All');
-  const [fDisp, setFDisp] = useState('All');
-  const [sortKey, setSortKey] = useState('Outstanding');
-  const [sortDir, setSortDir] = useState('desc');
-  const [page, setPage] = useState(0);
-  const PAGE_SIZE = 15;
 
   const bootShare = async () => {
     const res = await fetch(`/api/share/${shareToken}`);
@@ -730,7 +731,7 @@ export default function Report({ shareToken = null }) {
         return;
       }
       const p = await fetch(`/api/batch?id=${encodeURIComponent(id)}`).then((r) => r.json());
-      setData(p); setBatchId(id); setPage(0);
+      setData(p); setBatchId(id);
     } catch {
       if (id === SUMMARY_ID) setSummary({ error: 'Could not build the summary.' });
     } finally { setSwitching(false); }
@@ -774,10 +775,9 @@ export default function Report({ shareToken = null }) {
      recipient gets is the same report you are looking at, read-only, with every customer
      name masked and the Account explorer absent entirely.
 
-     Why this instead of emailing a PDF: a PDF of this report CONTAINS RBL's customers
-     (the Top-20 table is real names), it is stale the moment a rupee moves, and once it
-     is in an inbox it is forwarded, archived and beyond your reach forever. A link can
-     be revoked. A PDF cannot be un-sent.
+     Why this instead of emailing a PDF: a PDF is stale the moment a rupee moves, and
+     once it is in an inbox it is forwarded, archived and beyond your reach forever. A
+     link can be revoked. A PDF cannot be un-sent.
 
      The URL is built on the SERVER, not here. Behind a tunnel the browser's origin is
      localhost, and a localhost link in an exec's inbox is a link to nothing. */
@@ -900,37 +900,15 @@ export default function Report({ shareToken = null }) {
     requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
   };
 
-  // ── Account explorer: server-side paginated rows (scales to millions) ──
-  const [ex, setEx] = useState({ header: [], rows: [], total: 0, totalPages: 1, filters: {} });
-  const [exLoading, setExLoading] = useState(false);
-  const IDX = { Account: 0, Name: 1, Status: 2, Disposition: 3, Region: 4, State: 5, Band: 6, Outstanding: 7, Recovered: 8, Attempts: 9, Connected: 10, PaymentMode: 11, PTP: 12, Mobile: 13, Lead: 14 };
-  useEffect(() => {
-    /* HARD STOP. /api/rows serves customer names, mobile numbers and account numbers.
-       A share link has no business anywhere near it, and the guard lives here — at the
-       fetch — not only in the JSX that hides the table. Hiding a component does not stop
-       its effect from firing. */
-    if (shareToken) return;
-    if (!authed || !batchId) return;
-    /* The Account explorer pages one BATCH. "__summary" is not a batch — it spans every
-       date — so asking /api/rows for it would 500 on every keystroke in the filter box. */
-    if (batchId === SUMMARY_ID) return;
-    let active = true;
-    const p = new URLSearchParams({ id: batchId, page: String(page), size: String(PAGE_SIZE), q, status: fStatus, region: fRegion, band: fBand, disp: fDisp, sort: sortKey, dir: sortDir });
-    const run = () => {
-      setExLoading(true);
-      fetch(`/api/rows?${p.toString()}`)
-        .then((r) => r.json())
-        .then((j) => { if (active && j && j.rows) setEx(j); })
-        .catch(() => {})
-        .finally(() => { if (active) setExLoading(false); });
-    };
-    const timer = setTimeout(run, q ? 300 : 0);
-    return () => { active = false; clearTimeout(timer); };
-  }, [authed, batchId, page, q, fStatus, fRegion, fBand, fDisp, sortKey, sortDir]);
+  /* THE ACCOUNT EXPLORER IS GONE, AND SO IS ITS FETCH.
+     It was the only surface in the product that pulled customer names, mobile numbers
+     and 19-digit account numbers into a browser. With the table removed there is
+     nothing left to render them, so the /api/rows call, its nine pieces of filter and
+     sort state, and its pager have been removed with it rather than left running
+     behind an early return.
 
-  const totalPages = ex.totalPages || 1;
-  const cur = page;
-  const pageRows = ex.rows;
+     The route itself is untouched and still refuses a share token. Nothing in this
+     client now requests per-customer data at all. */
 
   /* ---------- loading / auth ---------- */
   if (loading) {
@@ -977,11 +955,10 @@ export default function Report({ shareToken = null }) {
   const OW = A.outcomeWindow;
   const isSummary = batchId === SUMMARY_ID;
   const kpis = [
-    { label: 'Recovered Amount', value: fmtCr(t.recovered), sub: `${pct(t.recoveryRatePct)} of outstanding`, color: C.green },
+    { label: 'Recovered Total Outstanding', value: fmtCr(t.recovered), sub: `${pct(t.recoveryRatePct)} of outstanding`, color: C.green },
     { label: 'Resolution Rate', value: pct(t.resolutionRatePct), sub: `${fmtInt(t.resolved)} of ${fmtInt(t.accounts)} accounts`, color: C.blue },
     { label: 'Outstanding Amount', value: fmtCr(t.sumOut), sub: `${fmtInt(t.accounts)} accounts`, color: C.indigo },
     { label: 'AI Calls Connected', value: fmtInt(A.ai.connected), sub: `of ${fmtInt(A.ai.attempts)} attempts`, color: C.purple },
-    { label: 'Avg Recovery Amount', value: fmtINR(t.avgRecoveryPerResolved), sub: 'per resolved account', color: C.pink },
   ];
 
   const dispMax = Math.max(...A.disposition.map((d) => d.recovered), 1);
@@ -1257,11 +1234,11 @@ export default function Report({ shareToken = null }) {
                 <div style={{ fontSize: 13, color: txt(.55), lineHeight: 1.6, marginBottom: 18 }}>
                   A private, read-only link to <b style={{ color: txt(.8) }}>{data.meta.reportDate}</b> — the whole date:{' '}
                   <b style={{ color: txt(.8) }}>Day Total and every Day</b> filed under it. No login, no password —
-                  whoever holds the URL can open it. Since v9 the report itself carries{' '}
-                  <b style={{ color: txt(.8) }}>no customer names, mobile numbers or account numbers</b> — the Top-20 is
-                  identified by a masked account reference — so a leaked link is an embarrassment rather than a personal-data
-                  disclosure. They cannot reach any other date, upload, or open the Account explorer. Revoke it anyway when
-                  it has done its job.
+                  whoever holds the URL can open it. The report carries{' '}
+                  <b style={{ color: txt(.8) }}>no customer names, mobile numbers or account numbers</b> anywhere — there is
+                  no per-customer table left in the product at all — so a leaked link is an embarrassment rather than a
+                  personal-data disclosure. They cannot reach any other date and cannot upload. Revoke it anyway when it has
+                  done its job.
                 </div>
                 <label style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: txt(.45) }}>
                   Who is it for?
@@ -1574,7 +1551,7 @@ export default function Report({ shareToken = null }) {
           {/* The four numbers a COO wants before reading anything else. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 26 }}>
             {[
-              { l: 'Recovered Amount', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of outstanding`, c: AU.nominal },
+              { l: 'Recovered Total Outstanding', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of outstanding`, c: AU.nominal },
               { l: 'Accounts resolved', v: fmtInt(t.resolved), s: `${pct(t.resolutionRatePct, 1)} of the book`, c: AU.accent },
               { l: 'Total Accounts', v: fmtInt(t.accounts), s: fmtCr(t.sumOut) + ' outstanding', c: AU.secondary },
               { l: 'Still open', v: fmtCr(t.outstandingPending), s: `${fmtInt(t.unresolved)} accounts`, c: AU.tertiary },
@@ -1770,7 +1747,6 @@ export default function Report({ shareToken = null }) {
               { l: 'Total accounts', v: fmtInt(t.accounts), c: C.blue },
               { l: 'Total outstanding', v: fmtCr(t.sumOut), c: C.indigo },
               { l: 'Total minimum due', v: fmtCr(t.sumMinDue), c: C.teal },
-              { l: 'Average outstanding / account', v: fmtINR(t.avgOutstanding), c: C.purple },
               { l: 'Balance bands in the book', v: fmtInt(A.bandOrder.length), c: C.cyan },
               /* statesCovered — NOT state.length. The state list carries an "Unspecified"
                  bucket so the geography charts still add up to the book, and counting that
@@ -1794,7 +1770,6 @@ export default function Report({ shareToken = null }) {
               { l: 'Unresolved accounts', v: fmtInt(t.unresolved), s: pct(100 - t.resolutionRatePct, 1) + ' still open', c: AU.primary },
               { l: 'Value recovered', v: fmtCr(t.recovered), s: pct(t.recoveryRatePct, 1) + ' of outstanding', c: C.green },
               { l: 'Value still outstanding', v: fmtCr(t.outstandingPending), s: 'the working opportunity', c: C.orange },
-              { l: 'Average recovery / resolved account', v: fmtINR(t.avgRecoveryPerResolved), s: 'measured', c: C.blue },
             ].map((r, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderTop: i ? `1px solid ${ink(.07)}` : 'none' }}>
                 <div>
@@ -1896,7 +1871,6 @@ export default function Report({ shareToken = null }) {
                   { l: 'Calls connected', v: fmtInt(R.callsConnected) },
                   { l: 'Call connect rate', v: pct(R.callConnectRatePct, 1), hi: true },
                   { l: 'Avg attempts per account', v: R.avgAttemptsPerLead.toFixed(1) },
-                  { l: 'Avg dials to reach one account', v: R.avgAttemptsToConnect.toFixed(1), hi: true },
                 ].map((r, i) => (
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: i ? `1px solid ${ink(.07)}` : 'none' }}>
                     <span style={{ fontSize: 13, color: txt(.62) }}>{r.l}</span>
@@ -2000,7 +1974,6 @@ export default function Report({ shareToken = null }) {
                 { l: 'Dials per answered call', v: CL.intensity.dialsPerConnectedCall.toFixed(1), hi: true },
                 { l: 'Dials per account reached', v: CL.intensity.dialsPerReachedAccount.toFixed(1) },
                 { l: 'Most attempts on one account', v: fmtInt(CL.maxAttempt) },
-                { l: 'Talk-minutes (all)', v: fmtInt(CL.rates.talkMinutes) },
                 { l: 'Talk-minutes (human)', v: fmtInt(CL.rates.humanTalkMinutes) },
               ].map((m, i) => (
                 <div key={i} style={{ padding: '11px 13px', borderRadius: 12, background: 'transparent', border: `1px solid ${ink(.06)}` }}>
@@ -2116,7 +2089,7 @@ export default function Report({ shareToken = null }) {
                 {[
                   { l: 'Accounts with a payment disposition', v: fmtInt(CL.firstPaidAccounts), c: C.green },
                   { l: 'Dials placed', v: fmtInt(CL.intensity.attempts), c: C.indigo },
-                  CL.flattensAt ? { l: '90% of first payments landed by attempt', v: fmtInt(CL.flattensAt), c: C.blue } : null,
+                  CL.flattensAt ? { l: 'Attempts to reach 90% of payments', v: fmtInt(CL.flattensAt), c: C.blue } : null,
                   CL.flattensAt ? { l: `Dials after attempt ${CL.flattensAt}`, v: `${fmtInt(CL.dialsBeyondFlatten)} → ${fmtInt(CL.paidBeyondFlatten)} more`, c: C.orange } : null,
                 ].filter(Boolean).map((m, i) => (
                   <div key={i} style={{ flex: '1 1 190px', padding: '12px 14px', borderRadius: 16, background: 'transparent', border: `1px solid ${ink(.06)}` }}>
@@ -2390,7 +2363,7 @@ export default function Report({ shareToken = null }) {
                 {segments.map((s, i) => (
                   <Bar key={i} label={s.name} right={`${fmtCr(s.recovered)} rec · ${pct(s.resolutionPct, 1)} res`}
                     pctv={(s.outstanding || 0) / segMax * 100}
-                    color={ramp(i)}
+                    color={segColor(s.name, i)}
                     sub={`${fmtInt(s.count)} accounts · ${fmtCr(s.outstanding)} outstanding · ${fmtInt(s.resolved)} resolved`} />
                 ))}
               </>
@@ -2609,42 +2582,7 @@ export default function Report({ shareToken = null }) {
           </Card>
         )}
 
-        {/* ===== Top 20 ===== */}
-        <Card span={12} className="print-breakable" style={{ marginBottom: 16 }}>
-          <Title t="High outstanding accounts — top 20" s="Prioritised by exposure — identified by a masked account reference, never by name" />
-          <div className="table-scroll" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ color: txt(.45), textAlign: 'left' }}>
-                  {['#', 'Account', 'State', 'Outstanding', 'AI Connected', 'PTP', 'Status'].map((h, i) => (
-                    <th key={i} style={{ padding: '10px 12px', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid ' + ink(.08), textAlign: i >= 3 ? 'right' : 'left' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {A.topOutstanding.map((r, i) => (
-                  <tr key={i} className="hover-row">
-                    <td style={{ padding: '10px 12px', color: txt(.4), fontVariantNumeric: 'tabular-nums' }}>{i + 1}</td>
-                    {/* `ref` — the last six digits of the account, and nothing else. This
-                        table used to print the customer's name, which made the one card an
-                        exec is most likely to screenshot also the only place in the whole
-                        deliverable holding a bank's customers by name. A report saved before
-                        v9 has no `ref`; it prints a dash rather than falling back to the name
-                        it used to carry. `npm run rebuild` restores the column. */}
-                    <td style={{ padding: '10px 12px', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.ref || '—'}</td>
-                    <td style={{ padding: '10px 12px', color: txt(.65) }}>{r.state}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtCr(r.outstanding)}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: txt(.65) }}>{r.connected}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>{r.ptp ? <span style={{ color: C.green, fontWeight: 600 }}>Yes</span> : <span style={{ color: txt(.35) }}>—</span>}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--radius-capsule)', background: AU.quiet, color: r.status === 'Resolved' ? C.green : AU.secondary }}>{r.status}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        {/* Top-20 high-outstanding accounts card removed at the client's request. */}
 
         {/* ═══════════════ COMPLETE COLLECTION FUNNEL ═══════════════
             A real funnel — drawn as one continuous tapering vessel in SVG, not a stack of
@@ -2885,39 +2823,9 @@ export default function Report({ shareToken = null }) {
             "Agent" somebody starts managing people by it. */}
         {CL && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
-            {CL.lines.length > 1 && (
-              <Card span={12} className="print-breakable">
-                <Title t="Outbound lines" s="Connect rate by the trunk the call went out on — a line, not an agent" />
-                <div className="table-scroll" style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr>
-                        <th style={l2Th('left', 90)}>Line</th>
-                        <th style={l2Th('right', 74)}>Dials</th>
-                        <th style={l2Th('right', 84)}>Answered</th>
-                        <th style={l2Th('right', 84)}>Connect %</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {CL.lines.slice(0, 10).map((l, i) => (
-                        <tr key={i} style={{ borderTop: `1px solid ${ink(.07)}` }}>
-                          <td style={{ padding: '9px 10px', fontWeight: 600, color: txt(.85), fontVariantNumeric: 'tabular-nums' }}>••{l.line}</td>
-                          <td style={{ padding: '9px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(l.attempts)}</td>
-                          <td style={{ padding: '9px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>{fmtInt(l.connected)}</td>
-                          <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: connColor(l.connectPct), fontVariantNumeric: 'tabular-nums' }}>{pct(l.connectPct, 1)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ fontSize: 12, color: txt(.5), marginTop: 12, lineHeight: 1.6 }}>
-                  {fmtInt(CL.lines.length)} outbound lines in this campaign; the ten busiest are listed, identified by their
-                  last four digits. A line is a <b>trunk</b>: the same account is rung from a dozen different ones, and a
-                  line with a better connect rate may be one the carriers flag less often. This is not agent
-                  performance and must not be read as it. Measuring an agent would need an agent_id on the call attempt, and the export does not carry one.
-                </div>
-              </Card>
-            )}
+            {/* Outbound-lines card removed at the client's request (a line is a trunk, not
+                an agent — it was never a performance metric). The per-line roll-up stays in
+                the aggregator behind CL.lines. */}
 
           </div>
         )}
@@ -2940,83 +2848,10 @@ export default function Report({ shareToken = null }) {
           </Card>
         </div>
 
-        {/* ===== Account explorer (server-side paginated) =====
-            Excluded from print: on paper it is 15 rows of a 7,042-row paginated table —
-            a meaningless fragment that costs three pages.
-
-            NEVER rendered on a share link. This table is names, mobile numbers and
-            19-digit account numbers. The fetch behind it is already blocked upstream;
-            this is the second lock on the same door, because one lock on a bank's
-            customer list is not enough. */}
-        {!shareToken && (
-        <Card span={12} className="no-print-explorer">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-            <Title t="Account explorer" s={`${fmtInt(ex.total)} of ${fmtInt(t.accounts)} accounts${exLoading ? ' · updating…' : ''}`} />
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <input value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} placeholder="Search name, account, mobile…"
-                style={{ padding: '10px 16px', fontSize: 13, borderRadius: 'var(--radius-capsule)', border: '1px solid ' + ink(.14), background: AU.quiet, outline: 'none', color: AU.primary, width: 240 }} />
-              {[['Status', fStatus, setFStatus], ['Region', fRegion, setFRegion], ['Band', fBand, setFBand], ['Disposition', fDisp, setFDisp]].map(([key, val, set], i) => (
-                <select key={i} value={val} onChange={(e) => { set(e.target.value); setPage(0); }}
-                  style={{ padding: '10px 32px 10px 16px', fontSize: 13, borderRadius: 'var(--radius-capsule)', border: '1px solid ' + ink(.14), background: AU.quiet, outline: 'none', color: AU.primary }}>
-                  {['All', ...((ex.filters && ex.filters[key]) || [])].map((o) => <option key={o} value={o}>{o === 'All' ? `All ${key}s` : o}</option>)}
-                </select>
-              ))}
-            </div>
-          </div>
-          <div className="table-scroll" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ color: txt(.45), textAlign: 'left' }}>
-                  {[['Customer', 'Name'], ['Status', 'Status'], ['Disposition', 'Disposition'], ['Region', 'Region'], ['Band', 'Band'], ['Outstanding', 'Outstanding'], ['Recovered', 'Recovered'], ['Att', 'Attempts'], ['Conn', 'Connected'], ['Lead', null]].map(([h, key], i) => {
-                    const sortable = key && ['Outstanding', 'Recovered', 'Attempts', 'Connected'].includes(key);
-                    return (
-                      <th key={i} onClick={() => { if (sortable) { setSortKey(key); setSortDir(sortKey === key && sortDir === 'desc' ? 'asc' : 'desc'); setPage(0); } }}
-                        style={{ padding: '10px 12px', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid ' + ink(.08), textAlign: i >= 5 && i <= 8 ? 'right' : 'left', cursor: sortable ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
-                        {h}{sortKey === key ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((r, i) => (
-                  <tr key={i} className="hover-row">
-                    <td style={{ padding: '10px 12px' }}>
-                      <div style={{ fontWeight: 600 }}>{r[IDX.Name]}</div>
-                      <div style={{ fontSize: 11, color: txt(.4), fontVariantNumeric: 'tabular-nums' }}>•••• {String(r[IDX.Mobile]).slice(-4)}</div>
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--radius-capsule)', background: AU.quiet, color: r[IDX.Status] === 'Resolved' ? C.green : AU.secondary }}>{r[IDX.Status]}</span>
-                    </td>
-                    <td style={{ padding: '10px 12px', color: txt(.65) }}>{r[IDX.Disposition]}</td>
-                    <td style={{ padding: '10px 12px', color: txt(.65) }}>{r[IDX.Region]}</td>
-                    <td style={{ padding: '10px 12px', color: txt(.65) }}>{r[IDX.Band]}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmtCr(r[IDX.Outstanding])}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r[IDX.Recovered] > 0 ? C.green : AU.secondary }}>{r[IDX.Recovered] > 0 ? fmtCr(r[IDX.Recovered]) : '—'}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: txt(.6) }}>{r[IDX.Attempts]}</td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: txt(.6) }}>{r[IDX.Connected]}</td>
-                    <td style={{ padding: '10px 12px' }}>
-                      {r[IDX.Lead] ? <a href={r[IDX.Lead]} target="_blank" rel="noreferrer" style={{ color: C.blue, fontWeight: 600, textDecoration: 'none', fontSize: 12 }}>Open ↗</a> : <span style={{ color: AU.secondary }}>—</span>}
-                    </td>
-                  </tr>
-                ))}
-                {pageRows.length === 0 && (
-                  <tr><td colSpan={10} style={{ padding: '28px 12px', textAlign: 'center', color: txt(.4) }}>{exLoading ? 'Loading…' : 'No matching accounts'}</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
-            <div style={{ fontSize: 13, color: txt(.5) }}>Page {cur + 1} of {totalPages}</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setPage(Math.max(0, cur - 1))} disabled={cur === 0}
-                style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-capsule)', border: '1px solid ' + ink(.14), background: cur === 0 ? ink(.03) : AU.quiet, color: cur === 0 ? AU.tertiary : AU.primary, cursor: cur === 0 ? 'default' : 'pointer' }}>Previous</button>
-              <button onClick={() => setPage(Math.min(totalPages - 1, cur + 1))} disabled={cur >= totalPages - 1}
-                style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-capsule)', border: '1px solid ' + ink(.14), background: cur >= totalPages - 1 ? ink(.03) : AU.quiet, color: cur >= totalPages - 1 ? AU.tertiary : AU.primary, cursor: cur >= totalPages - 1 ? 'default' : 'pointer' }}>Next</button>
-            </div>
-          </div>
-        </Card>
-        )}
+        {/* Account explorer removed at the client's request. It was the only surface that
+            pulled customer names, mobiles and account numbers into the browser; with it
+            gone, the /api/rows fetch is disabled too (see the explorer effect above), so
+            no per-customer PII is loaded at all. */}
 
         <div style={{ textAlign: 'center', fontSize: 12, color: txt(.4), marginTop: 40, lineHeight: 1.7 }}>
           Convin × RBL Bank · Recovery Intelligence · {data.meta.reportDate} · Recovered value counts full outstanding on resolved accounts.
