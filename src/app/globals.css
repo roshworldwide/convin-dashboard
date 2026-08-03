@@ -577,12 +577,14 @@ select {
  *   · stop a card being sliced in half across a fold
  * ═══════════════════════════════════════════════════════════════════════════════ */
 @media print {
-  /* PORTRAIT, single-column. Every top-level card row is collapsed to a single stacked
-     column for print (see the grid rule below), so each card gets the full page width
-     and nothing needs landscape. Stacked block flow is also the ONLY layout Chrome
-     paginates without slicing a card across a fold — grid/flex fragmentation is exactly
-     what produced the cut boxes. */
-  @page { size: A4 portrait; margin: 12mm 12mm 15mm 12mm; }
+  /* LANDSCAPE, single-column. Two independent fixes for the cut boxes, together:
+     (1) every top-level card row is collapsed to block flow (see the grid rule below) —
+         block flow is the only layout Chrome paginates without slicing a card, because
+         it moves a whole box to the next page instead of fragmenting a grid track;
+     (2) landscape makes each card FULL WIDTH, and a full-width card is SHORT (its
+         content spreads sideways instead of stacking tall), so it comfortably fits
+         inside one landscape page and never needs to be split at all. */
+  @page { size: A4 landscape; margin: 12mm 13mm 15mm 13mm; }
 
   *, *::before, *::after {
     -webkit-print-color-adjust: exact !important;
@@ -591,9 +593,10 @@ select {
 
   /* THE PAGE-COUNT LEVER. `zoom` is the only tool that shrinks the layout WITHOUT
      breaking pagination (transform: scale() paints smaller but the paginator still
-     measures the original boxes). Single-column portrait has the full page width to
-     work with, so it needs far less shrink than the old landscape grid did. */
-  html { zoom: 0.92; }
+     measures the original boxes). Landscape single-column cards are already short, so
+     this is a gentle shrink for density, not a rescue — it keeps the tallest card well
+     inside a landscape page's height. */
+  html { zoom: 0.85; }
 
   html, body {
     background: var(--ti-00) !important;
@@ -693,7 +696,7 @@ select {
   /* overflow-x: auto CLIPS in print — the cross-tab would arrive with its right-hand
      columns sliced clean off and the reader would have no way of knowing. */
   .table-scroll { overflow: visible !important; padding-left: 0 !important; padding-right: 0 !important; }
-  .table-scroll table { min-width: 0 !important; width: 100% !important; font-size: 8.5px !important; table-layout: auto !important; }
+  .table-scroll table { min-width: 0 !important; width: 100% !important; font-size: 9.5px !important; table-layout: auto !important; }
   .table-scroll th, .table-scroll td { padding: 5px 6px !important; white-space: normal !important; }
   thead { display: table-header-group !important; }
   tr { break-inside: avoid !important; page-break-inside: avoid !important; }

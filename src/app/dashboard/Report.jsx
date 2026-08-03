@@ -1419,12 +1419,14 @@ export default function Report({ shareToken = null }) {
         </span>
         <Link href="/" title="Home" className="pill" style={{ fontSize: 12, fontWeight: 600, color: AU.primary, textDecoration: 'none', padding: '7px 14px', background: ink(.07), whiteSpace: 'nowrap' }}>Home</Link>
         <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Toggle light / dark" aria-label="Toggle theme" className="pill" style={{ background: ink(.07), color: AU.primary, fontSize: 13, padding: '7px 12px', lineHeight: 1 }} suppressHydrationWarning>{theme === 'dark' ? '☀' : '☾'}</button>
-        {/* Print. No second renderer, no separate PDF layout — the browser prints THIS
-            page, so what lands in the PDF is what they just watched on screen, forever.
-            Cmd+P does the same thing; the button is here because an exec will look for it. */}
-        <button onClick={printReport} title="Print / save as PDF" aria-label="Print report" className="pill"
+        {/* Save as PDF. No second renderer, no separate PDF layout — the browser prints
+            THIS page through a landscape, print-first stylesheet, so what lands in the
+            PDF is what they just watched on screen, forever. The print dialog IS the
+            preview: it opens in landscape and shows every page before they save. Cmd+P
+            does the same thing; the button is here because an exec will look for it. */}
+        <button onClick={printReport} title="Open the print preview and Save as PDF (landscape, one card per row — nothing is cut)" aria-label="Save report as PDF" className="pill"
           style={{ background: ink(.07), color: AU.primary, fontSize: 12, fontWeight: 600, padding: '7px 14px', whiteSpace: 'nowrap' }}>
-          Print
+          Save as PDF
         </button>
         <button onClick={openShare} title="Create a private read-only link to this report" className="pill"
           style={{ background: ink(.07), color: AU.primary, fontSize: 12, fontWeight: 600, padding: '7px 14px', whiteSpace: 'nowrap' }}>
