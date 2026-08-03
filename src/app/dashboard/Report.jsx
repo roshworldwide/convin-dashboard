@@ -2158,7 +2158,7 @@ export default function Report({ shareToken = null }) {
               group RBL later marked resolved. <b style={{ color: txt(.85) }}>n</b> = number of accounts in the group.
             </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 200, marginTop: 6 }}>
-              {A.duration.map((d, i) => (
+              {A.duration.filter((d) => !/not\s*connected/i.test(d.bucket)).map((d, i) => (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 8 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: durColor(d.resolutionPct), fontVariantNumeric: 'tabular-nums' }}>{pct(d.resolutionPct, 0)}</div>
                   <div style={{ width: '100%', maxWidth: 60, borderRadius: 'var(--radius-sm)', height: `${d.resolutionPct}%`, background: durColor(d.resolutionPct), minHeight: 6 }} />

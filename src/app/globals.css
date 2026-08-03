@@ -577,22 +577,23 @@ select {
  *   · stop a card being sliced in half across a fold
  * ═══════════════════════════════════════════════════════════════════════════════ */
 @media print {
-  /* LANDSCAPE, on purpose. This is a dashboard: 12-column grids, a 6-column
-     duration × disposition cross-tab, a 7-column disposition table. Forced into A4
-     portrait the browser lays it out at ~794 px and every one of those grids crushes.
-     Landscape gives ~1120 px, close to what the layout was designed for. */
-  @page { size: A4 landscape; margin: 14mm 15mm 18mm 15mm; }
+  /* PORTRAIT, single-column. Every top-level card row is collapsed to a single stacked
+     column for print (see the grid rule below), so each card gets the full page width
+     and nothing needs landscape. Stacked block flow is also the ONLY layout Chrome
+     paginates without slicing a card across a fold — grid/flex fragmentation is exactly
+     what produced the cut boxes. */
+  @page { size: A4 portrait; margin: 12mm 12mm 15mm 12mm; }
 
   *, *::before, *::after {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* THE PAGE-COUNT LEVER. Every card carries break-inside: avoid — it must, or a
-     chart gets sliced across a fold. The cost is white space. `zoom` is the only tool
-     that shrinks the layout WITHOUT breaking pagination (transform: scale() paints
-     smaller but the paginator still measures the original boxes). */
-  html { zoom: 0.82; }
+  /* THE PAGE-COUNT LEVER. `zoom` is the only tool that shrinks the layout WITHOUT
+     breaking pagination (transform: scale() paints smaller but the paginator still
+     measures the original boxes). Single-column portrait has the full page width to
+     work with, so it needs far less shrink than the old landscape grid did. */
+  html { zoom: 0.92; }
 
   html, body {
     background: var(--ti-00) !important;
@@ -657,6 +658,15 @@ select {
      already carries the date, the title and "page x of y". */
   .print-footer { display: none !important; }
 
+  /* Collapse every top-level card ROW to single-column block flow. Chrome fragments a
+     CSS grid between its tracks and will slice a card that straddles a fold — that is
+     the bug behind the cut boxes. In block flow each card is a normal box that
+     break-inside: avoid can actually keep whole. Cards stack full-width down the page. */
+  .page-shell > div[style*="grid"] {
+    display: block !important;
+    margin-bottom: 0 !important;
+  }
+
   .card, .print-block {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
@@ -666,20 +676,24 @@ select {
     padding: 13px 15px !important;
     background: #FFF !important;
     backdrop-filter: none !important;
-    margin: 0 !important;
+    width: auto !important;
+    margin: 0 0 10px 0 !important;
   }
 
   /* …EXCEPT the long tables. A table is the one thing that survives a page break
      gracefully — its header repeats — so tables flow and everything else stays whole. */
   .print-breakable { break-inside: auto !important; page-break-inside: auto !important; }
 
-  .page-shell > div[style*="grid"] { gap: 10px !important; margin-bottom: 10px !important; }
   .card + .card, .page-shell > .card { margin-bottom: 10px !important; }
+
+  /* Any inner grid inside a card (stat-tile rows, two-up sub-panels) is allowed to keep
+     laying out — but wrap onto the full page width and never force a fold. */
+  .card div[style*="grid"] { break-inside: avoid !important; page-break-inside: avoid !important; }
 
   /* overflow-x: auto CLIPS in print — the cross-tab would arrive with its right-hand
      columns sliced clean off and the reader would have no way of knowing. */
   .table-scroll { overflow: visible !important; padding-left: 0 !important; padding-right: 0 !important; }
-  .table-scroll table { min-width: 0 !important; width: 100% !important; font-size: 9px !important; table-layout: auto !important; }
+  .table-scroll table { min-width: 0 !important; width: 100% !important; font-size: 8.5px !important; table-layout: auto !important; }
   .table-scroll th, .table-scroll td { padding: 5px 6px !important; white-space: normal !important; }
   thead { display: table-header-group !important; }
   tr { break-inside: avoid !important; page-break-inside: avoid !important; }
