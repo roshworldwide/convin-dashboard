@@ -961,13 +961,14 @@ export default function Report({ shareToken = null }) {
     { label: 'AI Calls Connected', value: fmtInt(A.ai.connected), sub: `of ${fmtInt(A.ai.attempts)} attempts`, color: C.purple },
   ];
 
-  const dispMax = Math.max(...A.disposition.map((d) => d.recovered), 1);
-  const bandMax = Math.max(...A.bandOrder.map((b) => A.band[b]?.outstanding || 0), 1);
+  /* Bars are drawn at their TRUE proportion, never rescaled so the largest = 100%.
+     Rate bars use the rate itself; value bars (disposition) use share of total
+     recovered. dispTotal is that denominator. */
+  const dispTotal = Math.max(A.disposition.reduce((s, d) => s + (d.recovered || 0), 0), 1);
 
   /* RBL's own segment. Payloads written before this shipped have no `segments` key,
      so default it — an older report must still open, not crash the page. */
   const segments = A.segments || [];
-  const segMax = Math.max(...segments.map((s) => s.outstanding || 0), 1);
   /* NOTE: the dashboard no longer reads `data.intel.model` anywhere. The model still
      trains on every upload and still ships in the payload and the database — it is
      simply not rendered. Bringing the UI back is a rendering change, not a rebuild. */
@@ -1001,7 +1002,6 @@ export default function Report({ shareToken = null }) {
       count: d.count || 0,
     };
   });
-  const ovrMax = Math.max(...ovr.map((r) => r.outstanding), 1);
 
   /* Collection disposition analysis — L2.
      Only dispositions with a real sample get charted. On the live book there are L2
@@ -1015,7 +1015,7 @@ export default function Report({ shareToken = null }) {
     (acc, d) => ({ count: acc.count + d.total, recovered: acc.recovered + d.recovered, kinds: acc.kinds + 1 }),
     { count: 0, recovered: 0, kinds: 0 },
   );
-  const dispL2Max = Math.max(...dispL2.map((d) => d.recovered), 1);
+  const dispL2Total = Math.max(dispL2.reduce((s, d) => s + (d.recovered || 0), 0), 1);
   const dispL2Ptp = dispL2.find((d) => d.name === 'Promise to Pay Later');
   const dispL2Paid = dispL2.find((d) => d.name === 'Paid');
 
@@ -1156,9 +1156,7 @@ export default function Report({ shareToken = null }) {
   })();
 
   const regionOrder = Object.keys(A.region).sort((a, b) => A.region[b].outstanding - A.region[a].outstanding);
-  const regionMax = Math.max(...regionOrder.map((r) => A.region[r].outstanding), 1);
   const stateTop = A.state.slice(0, 8);
-  const stateMax = stateTop.length ? stateTop[0].outstanding : 1;
   /* At or above the book's own resolution rate, or below it. Two states, one Signal
      hue, graded against a baseline this book actually has. */
   const durColor = (p) => (p >= t.resolutionRatePct ? AU.nominal : AU.tertiary);
@@ -2155,6 +2153,10 @@ export default function Report({ shareToken = null }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
           <Card span={8}>
             <Title t="Longer conversations recover more" s="Resolution rate by how long the AI talked — the key insight" />
+            <div style={{ fontSize: 12.5, color: txt(.6), lineHeight: 1.6, marginTop: 4, marginBottom: 12 }}>
+              Accounts are grouped by how long the AI actually talked to them. Each bar is the share of that
+              group RBL later marked resolved. <b style={{ color: txt(.85) }}>n</b> = number of accounts in the group.
+            </div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 200, marginTop: 6 }}>
               {A.duration.map((d, i) => (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 8 }}>
@@ -2195,7 +2197,7 @@ export default function Report({ shareToken = null }) {
           <Card span={12}>
             <Title t="Collection disposition analysis — L1" s="Recovered value by the AI's main disposition" />
             {A.disposition.slice(0, 7).map((d, i) => (
-              <Bar key={i} label={d.name} right={fmtCr(d.recovered)} pctv={d.recovered / dispMax * 100}
+              <Bar key={i} label={d.name} right={fmtCr(d.recovered)} pctv={d.recovered / dispTotal * 100}
                 color={AU.nominal} sub={`${fmtInt(d.resolved)} resolved of ${fmtInt(d.total)} · ${fmtCr(d.outstanding)} outstanding`} />
             ))}
           </Card>
@@ -2247,7 +2249,7 @@ export default function Report({ shareToken = null }) {
                         </td>
                         <td style={{ padding: '11px 10px' }}>
                           <div style={{ height: 10, borderRadius: 'var(--radius-capsule)', background: ink(.07), overflow: 'hidden' }}>
-                            <div style={{ width: `${Math.max(1.5, d.recovered / dispL2Max * 100)}%`, height: '100%', borderRadius: 'var(--radius-capsule)', background: AU.nominal }} />
+                            <div style={{ width: `${Math.max(1.5, d.recovered / dispL2Total * 100)}%`, height: '100%', borderRadius: 'var(--radius-capsule)', background: AU.nominal }} />
                           </div>
                         </td>
                       </tr>
@@ -2308,13 +2310,11 @@ export default function Report({ shareToken = null }) {
                   <span style={{ color: r.recoveryPct >= t.recoveryRatePct ? AU.nominal : AU.abort, fontWeight: 700 }}>{'  '}{pct(r.recoveryPct, 1)}</span>
                 </span>
               </div>
-              {/* One bar, two segments: recovered (green) sits inside the band's total
-                  outstanding (grey), and the bar's WIDTH is that band's share of the
-                  biggest band. So you can see size and success at the same time. */}
+              {/* The green fill is the band's recovery rate at TRUE scale (0-100%), not
+                  rescaled to the biggest band. The ₹ amounts per band are in the row
+                  text above, so size is not lost. */}
               <div style={{ height: 14, borderRadius: 'var(--radius-capsule)', background: ink(.06), overflow: 'hidden' }}>
-                <div style={{ width: `${Math.max(1.5, r.outstanding / ovrMax * 100)}%`, height: '100%', borderRadius: 'var(--radius-capsule)', background: ink(.12), overflow: 'hidden' }}>
-                  <div style={{ width: `${r.recoveryPct}%`, height: '100%', borderRadius: 'var(--radius-capsule)', background: AU.nominal }} />
-                </div>
+                <div style={{ width: `${Math.max(1.5, r.recoveryPct)}%`, height: '100%', borderRadius: 'var(--radius-capsule)', background: AU.nominal }} />
               </div>
               <div style={{ fontSize: 12, color: txt(.42), marginTop: 4 }}>
                 {fmtInt(r.count)} accounts · {fmtCr(r.pending)} still pending
@@ -2323,21 +2323,13 @@ export default function Report({ shareToken = null }) {
           ))}
         </Card>
 
-        {/* ===== Balance band + Region ===== */}
+        {/* ===== Region ===== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
-          <Card span={6}>
-            <Title t="Balance band performance" s="Outstanding & resolution by current balance band" />
-            {A.bandOrder.map((b, i) => {
-              const d = A.band[b] || {};
-              return <Bar key={i} label={b} right={`${fmtCr(d.outstanding)} · ${pct(d.resolutionPct, 0)} res`} pctv={(d.outstanding || 0) / bandMax * 100}
-                color={ramp(i)} sub={`${fmtInt(d.count)} accounts · ${fmtInt(d.resolved)} resolved`} />;
-            })}
-          </Card>
-          <Card span={6}>
-            <Title t="Region-wise performance" s="Recovered value & resolution by region" />
+          <Card span={12}>
+            <Title t="Region-wise performance" s="Recovered value & resolution by region — the bar is each region's resolution rate" />
             {regionOrder.map((r, i) => {
               const d = A.region[r];
-              return <Bar key={i} label={r} right={`${fmtCr(d.recovered)} rec · ${pct(d.resolutionPct, 0)}`} pctv={d.outstanding / regionMax * 100}
+              return <Bar key={i} label={r} right={`${fmtCr(d.recovered)} rec · ${pct(d.resolutionPct, 0)} res`} pctv={d.resolutionPct}
                 color={ramp(i)} sub={`${fmtInt(d.count)} accounts · ${fmtCr(d.outstanding)} outstanding · ${pct(d.connectPct, 0)} connect`} />;
             })}
           </Card>
@@ -2351,7 +2343,7 @@ export default function Report({ shareToken = null }) {
               <>
                 {segments.map((s, i) => (
                   <Bar key={i} label={s.name} right={`${fmtCr(s.recovered)} rec · ${pct(s.resolutionPct, 1)} res`}
-                    pctv={(s.outstanding || 0) / segMax * 100}
+                    pctv={s.resolutionPct}
                     color={segColor(s.name, i)}
                     sub={`${fmtInt(s.count)} accounts · ${fmtCr(s.outstanding)} outstanding · ${fmtInt(s.resolved)} resolved`} />
                 ))}
@@ -2385,36 +2377,51 @@ export default function Report({ shareToken = null }) {
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 11 }}>
                 <div style={{ width: 120, fontSize: 13, color: txt(.72), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.state}</div>
                 <div style={{ flex: 1, height: 9, borderRadius: 'var(--radius-capsule)', background: ink(.07), overflow: 'hidden' }}>
-                  <div style={{ height: '100%', borderRadius: 'var(--radius-capsule)', width: `${s.outstanding / stateMax * 100}%`, background: AU.tertiary }} />
+                  <div style={{ height: '100%', borderRadius: 'var(--radius-capsule)', width: `${s.resolutionPct}%`, background: AU.tertiary }} />
                 </div>
-                <div style={{ width: 128, textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums', color: txt(.85) }}>{fmtCr(s.outstanding)} · {pct(s.resolutionPct, 0)}</div>
+                <div style={{ width: 128, textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums', color: txt(.85) }}>{fmtCr(s.outstanding)} · {pct(s.resolutionPct, 0)} res</div>
               </div>
             ))}
           </Card>
           <Card span={6}>
-            <Title t="Dial efficiency" s="Connect & resolution by number of attempts" />
+            <Title t="Dial efficiency" s="Accounts grouped by how many times they were dialled" />
+            <div style={{ fontSize: 12.5, color: txt(.6), lineHeight: 1.6, marginBottom: 16 }}>
+              Each group is a set of accounts dialled a certain number of times.
+              {' '}<b style={{ color: txt(.85) }}>Connected</b> = share the AI reached a person on.
+              {' '}<b style={{ color: txt(.85) }}>Resolved</b> = share RBL&apos;s status file later marked paid.
+            </div>
             {I.dial.map((d, i) => (
-              <div key={i} style={{ marginBottom: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-                  <span style={{ color: txt(.68) }}>{d.band} attempts · n={fmtInt(d.n)}</span>
-                  {/* A percentage of 6 accounts is not a rate. Print the count. */}
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: d.thin ? AU.tertiary : undefined }}>
-                    {d.thin ? <span style={{ color: AU.tertiary }}>too few to rate</span> : `${pct(d.resolutionPct, 0)} resolved`}
-                  </span>
+              <div key={i} style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13, marginBottom: 8 }}>
+                  <span style={{ color: txt(.82), fontWeight: 600 }}>{d.band} attempts</span>
+                  <span style={{ color: txt(.5), fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(d.n)} accounts</span>
                 </div>
-                {!d.thin && (
-                  <div style={{ display: 'flex', gap: 4, height: 9 }}>
-                    <div style={{ height: '100%', borderRadius: 'var(--radius-capsule)', width: `${d.connectPct}%`, background: C.cyan, opacity: .5 }} />
-                    <div style={{ height: '100%', borderRadius: 'var(--radius-capsule)', width: `${d.resolutionPct}%`, background: C.green, marginLeft: -4 }} />
+                {d.thin ? (
+                  <div style={{ fontSize: 12, color: AU.tertiary }}>Too few accounts here to show a reliable rate.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ width: 74, fontSize: 11.5, color: txt(.55) }}>Connected</span>
+                      <div style={{ flex: 1, height: 8, borderRadius: 'var(--radius-capsule)', background: ink(.07), overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${d.connectPct}%`, background: C.cyan, opacity: .7, borderRadius: 'var(--radius-capsule)' }} />
+                      </div>
+                      <span style={{ width: 42, textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums', color: txt(.75) }}>{pct(d.connectPct, 0)}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ width: 74, fontSize: 11.5, color: txt(.55) }}>Resolved</span>
+                      <div style={{ flex: 1, height: 8, borderRadius: 'var(--radius-capsule)', background: ink(.07), overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${d.resolutionPct}%`, background: C.green, borderRadius: 'var(--radius-capsule)' }} />
+                      </div>
+                      <span style={{ width: 42, textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: txt(.85) }}>{pct(d.resolutionPct, 0)}</span>
+                    </div>
                   </div>
                 )}
               </div>
             ))}
-            <div style={{ fontSize: 11, color: txt(.4), marginTop: 6 }}>
-              Faded = connect rate · Solid = resolution.
+            <div style={{ fontSize: 11, color: txt(.42), marginTop: 6, lineHeight: 1.5 }}>
               {OW?.blindAccounts > 0
-                ? <> Excludes {fmtInt(OW.blindAccounts)} accounts still being dialled after the outcome file was pulled ({fmtDay(OW.outcomeSeenTo)}) — their result is not known, and counting them as failures would drive the heavily-dialled bands to a false zero.</>
-                : <> The dialler stops once an account resolves, so attempts and outcome are not independent — read this as description, not cause.</>}
+                ? <>Excludes {fmtInt(OW.blindAccounts)} accounts still being dialled when the status file was pulled ({fmtDay(OW.outcomeSeenTo)}) — their outcome isn&apos;t known yet.</>
+                : <>The dialler stops once an account resolves, so more attempts don&apos;t cause a lower rate — read this as a description, not a cause.</>}
             </div>
           </Card>
         </div>
@@ -2436,7 +2443,7 @@ export default function Report({ shareToken = null }) {
                 </div>
                 <div style={{ fontSize: 17, color: AU.tertiary }}>→</div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: txt(.5) }}>Resolved by the bank</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: txt(.5) }}>Promise to Pay - Resolved</div>
                   <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.02em', color: AU.nominal, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(CL.ptp.resolved)}</div>
                   <div style={{ fontSize: 12, color: txt(.45) }}>{pct(CL.ptp.resolutionPct, 1)} of the promises kept</div>
                 </div>
@@ -2448,11 +2455,6 @@ export default function Report({ shareToken = null }) {
                 { l: 'Outstanding behind the promises', v: fmtCr(CL.ptp.outstanding), c: C.indigo },
                 { l: 'Recovered from them', v: fmtCr(CL.ptp.recovered), c: C.green },
                 { l: 'Promised and still open', v: fmtCr(CL.ptp.openAmount), c: C.orange },
-                {
-                  l: 'Against the average',
-                  v: `${CL.ptp.liftPts >= 0 ? '+' : '−'}${Math.abs(CL.ptp.liftPts).toFixed(1)} pts`,
-                  c: CL.ptp.liftPts >= 0 ? C.green : C.red,
-                },
               ].map((r, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderTop: i ? `1px solid ${ink(.07)}` : `1px solid ${ink(.07)}` }}>
                   <span style={{ fontSize: 13, color: txt(.65) }}>{r.l}</span>
