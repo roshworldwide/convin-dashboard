@@ -1454,7 +1454,7 @@ export default function Report({ shareToken = null }) {
             { id: day.dayTotal, label: 'Day Total', meta: `${fmtInt(day.rowCount)} accounts` },
             ...day.uploads.map((u) => ({ id: u.id, label: dayLabel(u), meta: u.time || `${fmtInt(u.rowCount)} rows` }))];
           return (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', padding: '28px 0 2px', animation: 'fadeUp .6s cubic-bezier(.32,.72,0,1) both' }}>
+            <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between', padding: '28px 0 2px', animation: 'fadeUp .6s cubic-bezier(.32,.72,0,1) both' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...GLASS, borderRadius: 'var(--radius-capsule)', padding: '7px 10px 7px 16px' }}>
                 <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: txt(.45), marginRight: 2 }}>Report date</span>
                 <button aria-label="Older date" onClick={() => gotoDate(dateIdx + 1)} disabled={dateIdx >= manifest.dates.length - 1} style={arrowBtn(dateIdx >= manifest.dates.length - 1)}>‹</button>
@@ -1947,7 +1947,7 @@ export default function Report({ shareToken = null }) {
                 {
                   l: 'Contact % (per account)', v: pct(CL.rates.contactPct, 1), c: C.green,
                   d: `${fmtInt(CL.rates.contactNumerator)} accounts reached ÷ ${fmtInt(CL.rates.contactDenominator)} total accounts`,
-                  n: "How much of RBL's book we got hold of at all. This is the one an exec means.",
+                  n: "How many of RBL's accounts we got hold of at all. This is the one an exec means.",
                 },
                 {
                   l: 'Contact % — human only', v: pct(CL.rates.humanContactPct, 1), c: C.blue,

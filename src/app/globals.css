@@ -661,13 +661,23 @@ select {
      already carries the date, the title and "page x of y". */
   .print-footer { display: none !important; }
 
-  /* Collapse every top-level card ROW to single-column block flow. Chrome fragments a
-     CSS grid between its tracks and will slice a card that straddles a fold — that is
-     the bug behind the cut boxes. In block flow each card is a normal box that
-     break-inside: avoid can actually keep whole. Cards stack full-width down the page. */
-  .page-shell > div[style*="grid"] {
+  /* Collapse only the WIDE 12-column content rows (big charts, tables, two-up panels)
+     to block flow. Chrome fragments a CSS grid between its tracks and slices a card that
+     straddles a fold — that is the cut-box bug — so these stack full-width instead, and
+     a full-width landscape card is short enough to sit whole on one page.
+     The short 4-/3-across STAT STRIPS (the KPI numbers, the summary figures) are left as
+     grids so they stay horizontal instead of ballooning into big sparse stacked boxes. */
+  .page-shell > div[style*="repeat(12"] {
     display: block !important;
     margin-bottom: 0 !important;
+  }
+  /* Keep each stat strip on one page (all its numbers together), still horizontal. */
+  .page-shell > div[style*="repeat(4"],
+  .page-shell > div[style*="repeat(3"],
+  .page-shell > div[style*="repeat(2"] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 10px !important;
   }
 
   .card, .print-block {
