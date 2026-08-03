@@ -375,9 +375,9 @@ function SummaryView({ s }) {
   const multi = s.trend.length > 1;
 
   const head = [
-    { l: 'Recovered Total Outstanding', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of outstanding`, c: C.green },
+    { l: 'Recovered Total Outstanding Amount', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of total outstanding amount`, c: C.green },
     { l: 'Accounts Resolved', v: fmtInt(t.resolved), s: `${pct(t.resolutionRatePct, 1)} of ${fmtInt(t.accounts)}`, c: C.blue },
-    { l: 'Outstanding Amount', v: fmtCr(t.sumOut), s: `${fmtInt(t.accounts)} accounts`, c: C.indigo },
+    { l: 'Total Outstanding Amount', v: fmtCr(t.sumOut), s: `${fmtInt(t.accounts)} accounts`, c: C.indigo },
     { l: 'Still Open', v: fmtCr(t.outstandingPending), s: `${fmtInt(t.unresolved)} accounts`, c: C.orange },
   ];
 
@@ -426,8 +426,8 @@ function SummaryView({ s }) {
       {s.carry && (
         <Card span={12} style={{ marginBottom: 16 }}>
           <Title
-            t="Earlier cycles — not in the current book"
-            s="Worked on a previous report date, and deliberately NOT added to the totals above"
+            t="Earlier cycles — not in the current accounts"
+            s="Worked on an earlier report date, and deliberately kept out of the totals above"
           />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 28, alignItems: 'baseline', marginTop: 2 }}>
             <div>
@@ -444,9 +444,9 @@ function SummaryView({ s }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: txt(.5), lineHeight: 1.6, marginTop: 14 }}>
-            These accounts appear on {s.carry.dates.map((d) => d.display).join(', ')} but not in the current book.
-            They are <b>not</b> included in the totals above — outstanding is what is on the book today, and adding a
-            previous cycle to it would inflate the figure every time RBL sends a new one.
+            These accounts appear on {s.carry.dates.map((d) => d.display).join(', ')} but not in the current accounts.
+            They are <b>not</b> included in the totals above — outstanding is what is open today, and adding an
+            earlier cycle would inflate the figure every time RBL sends a new one.
           </div>
         </Card>
       )}
@@ -471,7 +471,7 @@ function SummaryView({ s }) {
              otherwise "recovery went up ₹20 Cr" would be measuring a different book. ── */}
       {m && (
         <Card span={12} style={{ marginBottom: 16 }}>
-          <Title t="Movement" s={`How the book changed between ${m.from} and ${m.to}`} />
+          <Title t="Movement" s={`How the accounts changed between ${m.from} and ${m.to}`} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 20, marginTop: 4 }}>
             {[
               { l: 'Recovered', v: `${m.recovered >= 0 ? '+' : '−'}${fmtCr(Math.abs(m.recovered))}`, c: m.recovered >= 0 ? C.green : AU.abort },
@@ -490,7 +490,7 @@ function SummaryView({ s }) {
       {/* ── The trend. One row per report date. ── */}
       {multi && (
         <Card span={12} className="print-breakable" style={{ marginBottom: 16 }}>
-          <Title t="Every day, in order" s="Each Day re-reads the same book against a later status file — this is progress, not new money" />
+          <Title t="Every day, in order" s="Each day re-checks the same accounts against a newer status file — this is progress, not new money" />
           <div className="table-scroll" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -529,7 +529,7 @@ function SummaryView({ s }) {
       {/* ── What's working, what isn't ── */}
       {s.findings?.length > 0 && (
         <Card span={12} className="print-breakable" style={{ marginBottom: 16 }}>
-          <Title t="What's working, and what isn't" s="Every line below is computed from the book — none of it is asserted" />
+          <Title t="What's working, and what isn't" s="Every line below is measured from the data — nothing is assumed" />
           <div style={{ display: 'grid', gap: 10, marginTop: 4 }}>
             {s.findings.map((f, i) => (
               <div key={i} style={{
@@ -552,7 +552,7 @@ function SummaryView({ s }) {
 
       {/* ── The work queue ── */}
       <Card span={12} className="print-breakable" style={{ marginBottom: 16 }}>
-        <Title t="What to work next" s="The open book, ranked by what it is worth — a queue, not an observation" />
+        <Title t="What to work next" s="Open accounts, ranked by value — a work queue" />
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, margin: '2px 0 18px' }}>
           <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.02em', color: C.orange, fontVariantNumeric: 'tabular-nums' }}>
             {fmtCr(s.openAmount)}
@@ -955,9 +955,9 @@ export default function Report({ shareToken = null }) {
   const OW = A.outcomeWindow;
   const isSummary = batchId === SUMMARY_ID;
   const kpis = [
-    { label: 'Recovered Total Outstanding', value: fmtCr(t.recovered), sub: `${pct(t.recoveryRatePct)} of outstanding`, color: C.green },
+    { label: 'Recovered Total Outstanding Amount', value: fmtCr(t.recovered), sub: `${pct(t.recoveryRatePct)} of total outstanding amount`, color: C.green },
     { label: 'Resolution Rate', value: pct(t.resolutionRatePct), sub: `${fmtInt(t.resolved)} of ${fmtInt(t.accounts)} accounts`, color: C.blue },
-    { label: 'Outstanding Amount', value: fmtCr(t.sumOut), sub: `${fmtInt(t.accounts)} accounts`, color: C.indigo },
+    { label: 'Total Outstanding Amount', value: fmtCr(t.sumOut), sub: `${fmtInt(t.accounts)} accounts`, color: C.indigo },
     { label: 'AI Calls Connected', value: fmtInt(A.ai.connected), sub: `of ${fmtInt(A.ai.attempts)} attempts`, color: C.purple },
   ];
 
@@ -1543,7 +1543,7 @@ export default function Report({ shareToken = null }) {
           {/* The exact book these numbers were computed from. A report a bank cannot tie
               back to a specific file is a report a bank cannot check. */}
           {data.meta.cycFile && (
-            <div style={{ fontSize: 13, color: AU.tertiary, marginBottom: 30, fontVariantNumeric: 'tabular-nums' }}>
+            <div style={{ fontSize: 14.5, color: AU.tertiary, marginBottom: 30, fontVariantNumeric: 'tabular-nums' }}>
               Source book: <span style={{ color: AU.secondary, fontWeight: 600 }}>{data.meta.cycFile}</span>
             </div>
           )}
@@ -1551,8 +1551,8 @@ export default function Report({ shareToken = null }) {
           {/* The four numbers a COO wants before reading anything else. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 26 }}>
             {[
-              { l: 'Recovered Total Outstanding', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of outstanding`, c: AU.nominal },
-              { l: 'Accounts resolved', v: fmtInt(t.resolved), s: `${pct(t.resolutionRatePct, 1)} of the book`, c: AU.accent },
+              { l: 'Recovered Total Outstanding Amount', v: fmtCr(t.recovered), s: `${pct(t.recoveryRatePct, 1)} of total outstanding amount`, c: AU.nominal },
+              { l: 'Accounts resolved', v: fmtInt(t.resolved), s: `${pct(t.resolutionRatePct, 1)} of all accounts`, c: AU.accent },
               { l: 'Total Accounts', v: fmtInt(t.accounts), s: fmtCr(t.sumOut) + ' outstanding', c: AU.secondary },
               { l: 'Still open', v: fmtCr(t.outstandingPending), s: `${fmtInt(t.unresolved)} accounts`, c: AU.tertiary },
             ].map((k, i) => (
@@ -1569,13 +1569,12 @@ export default function Report({ shareToken = null }) {
               Where these numbers came from
             </div>
             <div style={{ fontSize: 12, lineHeight: 1.65, color: AU.secondary }}>
-              Every account in RBL&apos;s CYC book is included — <b>including the ones the AI never reached</b> — so the
-              denominator is the bank&apos;s, not ours. <b>The outcome (Resolved / Unresolved) is taken from RBL&apos;s own
-              status file</b> and from nowhere else; Convin&apos;s export does not contain it, by design. We do not mark
-              our own homework. Call activity, dispositions, timings and talk time come from Convin&apos;s AI call log —
-              one row per call attempt — rolled up onto each account and joined on Account No. Nothing on the following
-              pages is estimated unless it is explicitly labelled an assumption, and the figures that could not be
-              measured from these files are listed as such rather than filled in.
+              Every account in RBL&apos;s CYC file is included — <b>including the ones the AI never reached</b> — so the
+              base is the bank&apos;s, not ours. <b>The outcome (Resolved / Unresolved) comes only from RBL&apos;s own
+              status file</b>; Convin&apos;s export does not contain it, by design — we don&apos;t mark our own homework.
+              Call activity, dispositions, timings and talk time come from Convin&apos;s AI call log — one row per call
+              attempt — rolled up per account and joined on Account No. Nothing here is estimated unless it is labelled
+              an assumption, and anything that couldn&apos;t be measured is listed as such, not filled in.
               {' '}<b>No customer name or phone number appears anywhere in this document.</b>
             </div>
 
@@ -1613,8 +1612,8 @@ export default function Report({ shareToken = null }) {
           </p>
           {/* Same provenance line as the printed cover, on screen. */}
           {data.meta.cycFile && (
-            <div style={{ fontSize: 13, color: txt(.45), marginTop: 16, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .15s' }}>
-              Source book: <span style={{ color: txt(.7), fontWeight: 600 }}>{data.meta.cycFile}</span>
+            <div style={{ fontSize: 15.5, color: txt(.5), marginTop: 16, animation: 'fadeUp .8s cubic-bezier(.32,.72,0,1) both .15s' }}>
+              Source book: <span style={{ color: txt(.75), fontWeight: 600 }}>{data.meta.cycFile}</span>
             </div>
           )}
         </div>
@@ -1742,12 +1741,12 @@ export default function Report({ shareToken = null }) {
         {/* ===== Overall portfolio summary + Resolution summary ===== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
           <Card span={6}>
-            <Title t="Overall portfolio summary" s="The book RBL handed us, before anything happened to it" />
+            <Title t="Overall portfolio summary" s="The accounts RBL gave us, before any calling started" />
             {[
               { l: 'Total accounts', v: fmtInt(t.accounts), c: C.blue },
               { l: 'Total outstanding', v: fmtCr(t.sumOut), c: C.indigo },
               { l: 'Total minimum due', v: fmtCr(t.sumMinDue), c: C.teal },
-              { l: 'Balance bands in the book', v: fmtInt(A.bandOrder.length), c: C.cyan },
+              { l: 'Balance bands in the accounts', v: fmtInt(A.bandOrder.length), c: C.cyan },
               /* statesCovered — NOT state.length. The state list carries an "Unspecified"
                  bucket so the geography charts still add up to the book, and counting that
                  bucket as a state read 21 when there are 20. See totals in aggregate.mjs. */
@@ -1766,7 +1765,7 @@ export default function Report({ shareToken = null }) {
               <div style={{ width: `${t.resolutionRatePct}%`, background: AU.nominal }} />
             </div>
             {[
-              { l: 'Resolved accounts', v: fmtInt(t.resolved), s: pct(t.resolutionRatePct, 1) + ' of the book', c: C.green },
+              { l: 'Resolved accounts', v: fmtInt(t.resolved), s: pct(t.resolutionRatePct, 1) + ' of all accounts', c: C.green },
               { l: 'Unresolved accounts', v: fmtInt(t.unresolved), s: pct(100 - t.resolutionRatePct, 1) + ' still open', c: AU.primary },
               { l: 'Value recovered', v: fmtCr(t.recovered), s: pct(t.recoveryRatePct, 1) + ' of outstanding', c: C.green },
               { l: 'Value still outstanding', v: fmtCr(t.outstandingPending), s: 'the working opportunity', c: C.orange },
@@ -1878,8 +1877,7 @@ export default function Report({ shareToken = null }) {
                   </div>
                 ))}
                 <div style={{ fontSize: 11, color: txt(.42), marginTop: 10, lineHeight: 1.5 }}>
-                  This is <b>{pct(R.callConnectRatePct, 1)}</b>, not {pct(R.connectionRatePct, 1)}{' '}— an account that never answers is dialled
-                  many times and drags the per-dial figure down. Both are true. Don&apos;t quote one as the other.
+                  This counts every dial; accounts that never pick up are dialled many times, so this figure ({pct(R.callConnectRatePct, 1)}) is lower than the per-account one ({pct(R.connectionRatePct, 1)}).
                 </div>
               </div>
             </div>
@@ -1937,7 +1935,7 @@ export default function Report({ shareToken = null }) {
                 refuse, committed in a subtitle. */}
             <Title
               t="Attempt % and Contact % — the two rates, and their denominators"
-              s={`Per dial and per account. They are not interchangeable: on this book they are ${Math.abs(CL.rates.contactPct - CL.rates.attemptPct).toFixed(1)} points apart.`}
+              s={`Per dial vs per account — two different rates, ${Math.abs(CL.rates.contactPct - CL.rates.attemptPct).toFixed(1)} points apart on these accounts.`}
             />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 16, marginBottom: 20 }}>
               {[
@@ -1948,7 +1946,7 @@ export default function Report({ shareToken = null }) {
                 },
                 {
                   l: 'Contact % (per account)', v: pct(CL.rates.contactPct, 1), c: C.green,
-                  d: `${fmtInt(CL.rates.contactNumerator)} accounts reached ÷ ${fmtInt(CL.rates.contactDenominator)} in the book`,
+                  d: `${fmtInt(CL.rates.contactNumerator)} accounts reached ÷ ${fmtInt(CL.rates.contactDenominator)} total accounts`,
                   n: "How much of RBL's book we got hold of at all. This is the one an exec means.",
                 },
                 {
@@ -2025,7 +2023,7 @@ export default function Report({ shareToken = null }) {
             day it works. */}
         {CL && CL.byHour.length > 0 && (
           <Card span={12} style={{ marginBottom: 16 }}>
-            <Title t="When the AI called" s="Dials and connect rate by hour of day — from the timestamp on every one of the attempts" />
+            <Title t="When the AI called" s="Dials and connect rate by hour of day, from each call's timestamp" />
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 230, marginTop: 8 }}>
               {CL.byHour.map((h, i) => (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 6, minWidth: 0 }}>
@@ -2090,7 +2088,6 @@ export default function Report({ shareToken = null }) {
                   { l: 'Accounts with a payment disposition', v: fmtInt(CL.firstPaidAccounts), c: C.green },
                   { l: 'Dials placed', v: fmtInt(CL.intensity.attempts), c: C.indigo },
                   CL.flattensAt ? { l: 'Attempts to reach 90% of payments', v: fmtInt(CL.flattensAt), c: C.blue } : null,
-                  CL.flattensAt ? { l: `Dials after attempt ${CL.flattensAt}`, v: `${fmtInt(CL.dialsBeyondFlatten)} → ${fmtInt(CL.paidBeyondFlatten)} more`, c: C.orange } : null,
                 ].filter(Boolean).map((m, i) => (
                   <div key={i} style={{ flex: '1 1 190px', padding: '12px 14px', borderRadius: 16, background: 'transparent', border: `1px solid ${ink(.06)}` }}>
                     <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.04em', color: txt(.5) }}>{m.l}</div>
@@ -2108,7 +2105,6 @@ export default function Report({ shareToken = null }) {
                     <th style={l2Th('right', 90)}>Answered</th>
                     <th style={l2Th('right', 88)}>Connect %</th>
                     <th style={l2Th('right', 118)}>First payment here</th>
-                    <th style={l2Th('right', 108)}>…later resolved</th>
                     <th style={l2Th('left', 190)}>Cumulative share of first payments</th>
                   </tr>
                 </thead>
@@ -2129,9 +2125,6 @@ export default function Report({ shareToken = null }) {
                       <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: a.firstPaid ? AU.primary : AU.tertiary, fontVariantNumeric: 'tabular-nums' }}>
                         {a.firstPaid ? fmtInt(a.firstPaid) : '—'}
                       </td>
-                      <td style={{ padding: '9px 10px', textAlign: 'right', color: txt(.62), fontVariantNumeric: 'tabular-nums' }}>
-                        {a.firstPaid ? fmtInt(a.firstPaidResolved) : '—'}
-                      </td>
                       <td style={{ padding: '9px 10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                           <div style={{ flex: 1, height: 9, borderRadius: 'var(--radius-capsule)', background: ink(.07), overflow: 'hidden' }}>
@@ -2145,18 +2138,14 @@ export default function Report({ shareToken = null }) {
                 </tbody>
               </table>
               <div style={{ marginTop: 14, padding: '13px 15px', borderRadius: 16, border: `1px solid ${AU.hairline}`, fontSize: 13, color: txt(.72), lineHeight: 1.65 }}>
-                <b style={{ color: AU.primary }}>This curve is observed, not optimal.</b>{' '}
-                The dialler stops ringing an account once it resolves, so attempt {fmtInt(CL.maxAttempt)} exists only for accounts
-                that had not paid by attempt {fmtInt(Math.max(1, CL.maxAttempt - 1))} — the late attempts are a sample of the hardest accounts
-                in the book, selected by the very outcome being plotted. The falling connect rate is partly dial fatigue and
-                partly that selection, and this data cannot separate the two.
+                <b style={{ color: AU.primary }}>This shows what happened — not the best stopping point.</b>{' '}
+                Once an account pays, we stop dialling it. So the later attempts are only the hardest accounts, and their
+                lower connect rate is part call fatigue and part that. This data can&apos;t tell the two apart.
                 {CL.flattensAt && (
-                  <> What it does say without any causal claim: <b>{pct(90, 0)} of first payments had landed by attempt {fmtInt(CL.flattensAt)}</b>,
-                    and the {fmtInt(CL.dialsBeyondFlatten)} dials placed after that produced {fmtInt(CL.paidBeyondFlatten)} more.
-                    Whether stopping there would have recovered the same money is a question only a held-out test can answer.</>
+                  <> <b>{pct(90, 0)} of first payments were in by attempt {fmtInt(CL.flattensAt)}</b>, and the
+                    {' '}{fmtInt(CL.dialsBeyondFlatten)} dials after that brought {fmtInt(CL.paidBeyondFlatten)} more.
+                    Whether stopping earlier would recover the same money needs a proper test to say.</>
                 )}
-                {' '}&ldquo;First payment here&rdquo; is the AI&apos;s own disposition; &ldquo;later resolved&rdquo; is RBL&apos;s status
-                file, which is the only place an outcome ever comes from.
               </div>
             </div>
           </Card>
@@ -2165,7 +2154,7 @@ export default function Report({ shareToken = null }) {
         {/* ===== Conversation Duration + AI Performance ===== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
           <Card span={8}>
-            <Title t="Longer conversations recover more" s="Resolution rate by AI conversation length — the core behavioural insight" />
+            <Title t="Longer conversations recover more" s="Resolution rate by how long the AI talked — the key insight" />
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 200, marginTop: 6 }}>
               {A.duration.map((d, i) => (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 8 }}>
@@ -2204,7 +2193,7 @@ export default function Report({ shareToken = null }) {
         {/* ===== Disposition ===== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
           <Card span={12}>
-            <Title t="Collection disposition analysis — L1" s="Recovered value by the AI's top-level disposition" />
+            <Title t="Collection disposition analysis — L1" s="Recovered value by the AI's main disposition" />
             {A.disposition.slice(0, 7).map((d, i) => (
               <Bar key={i} label={d.name} right={fmtCr(d.recovered)} pctv={d.recovered / dispMax * 100}
                 color={AU.nominal} sub={`${fmtInt(d.resolved)} resolved of ${fmtInt(d.total)} · ${fmtCr(d.outstanding)} outstanding`} />
@@ -2294,7 +2283,7 @@ export default function Report({ shareToken = null }) {
             comes entirely from the 20-30K band is a very different story from one spread
             across the book, and the difference is invisible on a totals card. */}
         <Card span={12} style={{ marginBottom: 16 }}>
-          <Title t="Outstanding vs recovery analysis" s="Recovered against outstanding in every balance band — is the recovery coming from the whole book, or only the cheap end?" />
+          <Title t="Outstanding vs recovery analysis" s="Recovered vs outstanding in each balance band — is recovery coming from the whole portfolio, or only the small accounts?" />
           <div style={{ display: 'flex', gap: 16, marginBottom: 18, flexWrap: 'wrap' }}>
             {[
               { l: 'Total outstanding', v: fmtCr(t.sumOut), c: C.indigo },
@@ -2357,7 +2346,7 @@ export default function Report({ shareToken = null }) {
         {/* ===== RBL's own segment ===== */}
         {segments.length > 0 && (
           <Card span={12} style={{ marginBottom: 16 }}>
-            <Title t="Performance by RBL segment" s="The bank's own risk grade, scored against what actually recovered" />
+            <Title t="Performance by RBL segment" s="RBL's own risk grade vs what actually recovered" />
             {segments.length > 1 ? (
               <>
                 {segments.map((s, i) => (
@@ -2391,7 +2380,7 @@ export default function Report({ shareToken = null }) {
         {/* ===== States + Dial efficiency ===== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
           <Card span={6}>
-            <Title t="State-wise performance" s="Where the book concentrates, and how each state is recovering" />
+            <Title t="State-wise performance" s="Where the accounts concentrate, and how each state is recovering" />
             {stateTop.map((s, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 11 }}>
                 <div style={{ width: 120, fontSize: 13, color: txt(.72), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.state}</div>
@@ -2438,12 +2427,12 @@ export default function Report({ shareToken = null }) {
         {CL && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
             <Card span={7}>
-              <Title t="Promise to pay — generated, and converted" s="How many customers committed to pay later, and how many of them RBL's own file later marked resolved" />
+              <Title t="Promise to pay — generated, and converted" s="How many customers promised to pay, and how many RBL's file later marked resolved" />
               <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap', marginBottom: 18 }}>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: txt(.5) }}>Promises generated</div>
                   <div style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.02em', color: C.blue, fontVariantNumeric: 'tabular-nums' }}>{fmtInt(CL.ptp.accounts)}</div>
-                  <div style={{ fontSize: 12, color: txt(.45) }}>{pct(CL.ptp.sharePct, 1)} of the book · {pct(CL.ptp.shareOfReachedPct, 1)} of accounts reached</div>
+                  <div style={{ fontSize: 12, color: txt(.45) }}>{pct(CL.ptp.sharePct, 1)} of all accounts · {pct(CL.ptp.shareOfReachedPct, 1)} of accounts reached</div>
                 </div>
                 <div style={{ fontSize: 17, color: AU.tertiary }}>→</div>
                 <div>
@@ -2460,7 +2449,7 @@ export default function Report({ shareToken = null }) {
                 { l: 'Recovered from them', v: fmtCr(CL.ptp.recovered), c: C.green },
                 { l: 'Promised and still open', v: fmtCr(CL.ptp.openAmount), c: C.orange },
                 {
-                  l: 'Against the book average',
+                  l: 'Against the average',
                   v: `${CL.ptp.liftPts >= 0 ? '+' : '−'}${Math.abs(CL.ptp.liftPts).toFixed(1)} pts`,
                   c: CL.ptp.liftPts >= 0 ? C.green : C.red,
                 },
@@ -2489,7 +2478,7 @@ export default function Report({ shareToken = null }) {
                   {fmtInt(CL.complaints.accounts)}
                 </div>
                 <div style={{ fontSize: 13, color: txt(.55) }}>
-                  accounts · {pct(CL.complaints.ratePct, 1)} of the book
+                  accounts · {pct(CL.complaints.ratePct, 1)} of all accounts
                 </div>
               </div>
               <div style={{ height: 12, borderRadius: 'var(--radius-capsule)', background: ink(.07), overflow: 'hidden', margin: '10px 0 18px' }}>
@@ -2530,7 +2519,7 @@ export default function Report({ shareToken = null }) {
             <Title t="DNC & compliance" s="Accounts that asked not to be called — and whether the dialler called them again" />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 14, marginBottom: 18 }}>
               {[
-                { l: 'DNC dispositions', v: fmtInt(CL.dnc.accounts), s: `${pct(CL.dnc.ratePct, 1)} of the book`, c: C.orange },
+                { l: 'DNC dispositions', v: fmtInt(CL.dnc.accounts), s: `${pct(CL.dnc.ratePct, 1)} of all accounts`, c: C.orange },
                 {
                   l: 'Dialled again afterwards',
                   v: fmtInt(CL.dnc.redialledAccounts),
@@ -2602,7 +2591,7 @@ export default function Report({ shareToken = null }) {
             out of the neck, side by side, sized against the book. You get the funnel
             silhouette an exec expects and the arithmetic survives contact with scrutiny. */}
         <Card span={12} style={{ marginBottom: 16 }}>
-          <Title t="Complete collection funnel" s="From RBL's full book to a resolved customer — and what each stage was actually worth" />
+          <Title t="Complete collection funnel" s="From RBL's full portfolio to a resolved customer — and what each stage was worth" />
 
           {funnelGeom && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 30, alignItems: 'start', marginTop: 8 }}>
@@ -2833,7 +2822,7 @@ export default function Report({ shareToken = null }) {
         {/* ===== Recoverable opportunity ===== */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12,1fr)', gap: 16, marginBottom: 16 }}>
           <Card span={12}>
-            <Title t="Recoverable opportunity" s="The open book, and what to work next" />
+            <Title t="Recoverable opportunity" s="Open accounts, and what to work next" />
             <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-.02em', fontVariantNumeric: 'tabular-nums' }}>{fmtCr(I.opportunity.openOutstanding)}</div>
             <div style={{ fontSize: 13, color: txt(.48), marginBottom: 16 }}>still outstanding across {fmtInt(t.unresolved)} open accounts</div>
             {I.opportunity.lists.map((l, i) => (
