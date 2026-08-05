@@ -1,8 +1,8 @@
 /* ─────────────────────────────────────────────────────────────────────────────
  * THE DEEP PATH — one string, read everywhere.
  *
- * The whole app is served under this prefix on the public domain, e.g.
- *   https://www.roshworldwide.com/rbl-recovery-x7k29p
+ * The whole app is served under this prefix on the public domain:
+ *   https://www.roshworldwide.com/convin
  * Nothing sits at the domain root — the bare root 404s, on purpose, so the report
  * is not "published" on the main site.
  *
@@ -14,7 +14,7 @@
  * and _next assets — but NOT raw fetch() calls, window.location assignments, or URLs
  * we build by hand. Those use withBase()/BASE_PATH explicitly.
  * ───────────────────────────────────────────────────────────────────────────── */
-export const BASE_PATH = '/rbl-recovery-x7k29p';
+export const BASE_PATH = '/convin';
 
-/* withBase('/api/data') → '/rbl-recovery-x7k29p/api/data' */
+/* withBase('/api/data') → '/convin/api/data' */
 export const withBase = (p = '') => `${BASE_PATH}${String(p).startsWith('/') ? p : '/' + p}`;
