@@ -99,3 +99,4 @@ original_prototype_backup/
 # The public tunnel URL, written by `npm run dev`. Ephemeral, and pointing at a
 # machine — never commit it.
 .tunnel-url
+FEATURE_PROMPT.md
