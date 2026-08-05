@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { withBase } from '../../lib/basepath.mjs';
 import { parseCsvLine } from '../../lib/csv.mjs';
 import { autoMap, FIELD_GROUPS, FIELD_LABELS } from '../../lib/normalize.mjs';
 import { uploadFiles } from '../../lib/upload_client.mjs';
@@ -98,7 +99,7 @@ export default function Upload() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch('/api/me');
+        const r = await fetch(withBase('/api/me'));
         if (r.status === 200) { const j = await r.json(); setName(j.name); setAuthed(true); } else setAuthed(false);
       } catch { setAuthed(false); }
     })();

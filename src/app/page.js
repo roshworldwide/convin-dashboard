@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { withBase } from '../lib/basepath.mjs';
 import {
   C, T, Card, Glass, Overline, Capsule, Field, SignalDot, Hairline,
   fmtInt,
@@ -53,9 +54,9 @@ export default function Home() {
   const [deleting, setDeleting] = useState('');
 
   const load = async () => {
-    const r = await fetch('/api/data');
+    const r = await fetch(withBase('/api/data'));
     if (r.status !== 200) { setAuthed(false); return; }
-    const [man, me] = await Promise.all([r.json(), fetch('/api/me').then((x) => (x.ok ? x.json() : { name: '' }))]);
+    const [man, me] = await Promise.all([r.json(), fetch(withBase('/api/me')).then((x) => (x.ok ? x.json() : { name: '' }))]);
     setManifest(man); setName(me.name || ''); setAuthed(true);
   };
   useEffect(() => { (async () => { try { await load(); } catch { setAuthed(false); } })(); }, []);
@@ -63,16 +64,16 @@ export default function Home() {
   const login = async (e) => {
     e.preventDefault(); setAuthError(''); setBusy(true);
     try {
-      const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+      const r = await fetch(withBase('/api/auth'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
       if (r.ok) await load(); else setAuthError((await r.json()).error || 'That username and password do not match.');
     } catch { setAuthError('The server did not answer. Check the connection and try again.'); } finally { setBusy(false); }
   };
-  const logout = async () => { try { await fetch('/api/auth'); setAuthed(false); setManifest(null); setName(''); setUsername(''); setPassword(''); } catch {} };
+  const logout = async () => { try { await fetch(withBase('/api/auth')); setAuthed(false); setManifest(null); setName(''); setUsername(''); setPassword(''); } catch {} };
 
   const removeReport = async (date) => {
     setDeleting(date);
     try {
-      await fetch(`/api/report?date=${encodeURIComponent(date)}`, { method: 'DELETE' });
+      await fetch(withBase(`/api/report?date=${encodeURIComponent(date)}`), { method: 'DELETE' });
       setConfirmDate('');
       await load();
     } catch {} finally { setDeleting(''); }

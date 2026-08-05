@@ -22,6 +22,8 @@ export const metadata = {
   title: "Recovery Intelligence — Convin × RBL Bank",
   description:
     "AI collections performance: how much credit-card outstanding Convin's AI voice agents recovered for RBL Bank — recovery, call telemetry, compliance and intelligence.",
+  /* This report lives at a private deep path and must never be indexed or listed. */
+  robots: { index: false, follow: false, nocache: true },
 };
 
 /* THE FINISH, SET BEFORE FIRST PAINT.

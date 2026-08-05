@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { PAYLOAD_VERSION } from '@/lib/payload_version.mjs';
+import { BASE_PATH, withBase } from '../../lib/basepath.mjs';
 import {
   C as AU, T, NUM, glass, surface, Metal, fmtCr, fmtInt, pct, mmss, fmtDay,
 } from '../aurum';
@@ -617,7 +618,7 @@ export default function Report({ shareToken = null }) {
 
 
   const bootShare = async () => {
-    const res = await fetch(`/api/share/${shareToken}`);
+    const res = await fetch(withBase(`/api/share/${shareToken}`));
     if (res.status !== 200) {
       const j = await res.json().catch(() => ({}));
       setShareErr(j.error || 'This link is not valid, or it has expired.');
@@ -645,7 +646,7 @@ export default function Report({ shareToken = null }) {
     if (id === batchId) return;
     setSwitching(true);
     try {
-      const r = await fetch(`/api/share/${shareToken}?batch=${encodeURIComponent(id)}`);
+      const r = await fetch(withBase(`/api/share/${shareToken}?batch=${encodeURIComponent(id)}`));
       if (!r.ok) return;                      // out of scope, revoked, gone — say nothing
       const j = await r.json();
       setData(j.payload); setBatchId(j.batchId);
@@ -653,7 +654,7 @@ export default function Report({ shareToken = null }) {
   };
 
   const boot = async () => {
-    const res = await fetch('/api/data');
+    const res = await fetch(withBase('/api/data'));
     if (res.status !== 200) { setAuthed(false); return; }
     const man = await res.json();
     if (!man.dates || !man.dates.length) { setManifest(man); setAuthed(true); return; }
@@ -666,8 +667,8 @@ export default function Report({ shareToken = null }) {
       if (qBatch) bid = qBatch;
     } catch {}
     if (!bid) bid = man.dates[idx].dayTotal;
-    const payload = await fetch(`/api/batch?id=${encodeURIComponent(bid)}`).then((r) => r.json());
-    const me = await fetch('/api/me').then((r) => (r.ok ? r.json() : { name: '' })).catch(() => ({ name: '' }));
+    const payload = await fetch(withBase(`/api/batch?id=${encodeURIComponent(bid)}`)).then((r) => r.json());
+    const me = await fetch(withBase('/api/me')).then((r) => (r.ok ? r.json() : { name: '' })).catch(() => ({ name: '' }));
     setName(me.name || '');
     // Measured, never claimed. If no sweep has been run, the section stays hidden.
     setManifest(man); setDateIdx(idx); setBatchId(bid); setData(payload); setAuthed(true);
@@ -730,7 +731,7 @@ export default function Report({ shareToken = null }) {
         await loadSummary(manifest?.dates?.[dateIdx]?.date);
         return;
       }
-      const p = await fetch(`/api/batch?id=${encodeURIComponent(id)}`).then((r) => r.json());
+      const p = await fetch(withBase(`/api/batch?id=${encodeURIComponent(id)}`)).then((r) => r.json());
       setData(p); setBatchId(id);
     } catch {
       if (id === SUMMARY_ID) setSummary({ error: 'Could not build the summary.' });
@@ -743,7 +744,7 @@ export default function Report({ shareToken = null }) {
     if (!iso) return;
     if (summary && summary.date === iso && !summary.error) return;
     try {
-      const j = await fetch(`/api/summary?date=${encodeURIComponent(iso)}`).then((r) => r.json());
+      const j = await fetch(withBase(`/api/summary?date=${encodeURIComponent(iso)}`)).then((r) => r.json());
       setSummary(j.error ? { error: j.error } : j);
     } catch {
       setSummary({ error: 'Could not build the summary.' });
@@ -762,7 +763,7 @@ export default function Report({ shareToken = null }) {
     selectBatch(manifest.dates[idx].dayTotal);
   };
 
-  const logout = async () => { try { await fetch('/api/auth'); window.location.href = '/'; } catch {} };
+  const logout = async () => { try { await fetch(withBase('/api/auth')); window.location.href = withBase('/'); } catch {} };
 
   /* Print / save as PDF.
      DARK MODE is the one thing that quietly ruins a printed dashboard, and you don't
@@ -806,7 +807,7 @@ export default function Report({ shareToken = null }) {
   const loadLinks = async () => {
     setLinksBusy(true);
     try {
-      const res = await fetch('/api/share');
+      const res = await fetch(withBase('/api/share'));
       const j = await res.json();
       setLinks(Array.isArray(j.shares) ? j.shares : []);
     } catch {
@@ -823,7 +824,7 @@ export default function Report({ shareToken = null }) {
     if (!window.confirm(`Revoke ${who}?\n\nIt stops working immediately. Anyone holding it — including in an email already sent — will see "This link is no longer available". This cannot be undone; you would have to issue a new one.`)) return;
     setRevoking(token);
     try {
-      const res = await fetch(`/api/share?token=${encodeURIComponent(token)}`, { method: 'DELETE' });
+      const res = await fetch(withBase(`/api/share?token=${encodeURIComponent(token)}`), { method: 'DELETE' });
       if (!res.ok) throw new Error('Revoke failed');
       // Reflect it locally rather than refetching — instant, and it cannot show a stale row.
       setLinks((prev) => (prev || []).map((l) => (l.token === token ? { ...l, revoked: true } : l)));
@@ -837,7 +838,7 @@ export default function Report({ shareToken = null }) {
   const copyLink = async (token) => {
     const base = (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/+$/, '') || window.location.origin;
     try {
-      await navigator.clipboard.writeText(`${base}/r/${token}`);
+      await navigator.clipboard.writeText(`${base}${BASE_PATH}/r/${token}`);
       setCopiedToken(token);
       setTimeout(() => setCopiedToken(''), 2000);
     } catch { /* clipboard blocked */ }
@@ -860,7 +861,7 @@ export default function Report({ shareToken = null }) {
     }
     setShareBusy(true); setShareErrMsg('');
     try {
-      const res = await fetch('/api/share', {
+      const res = await fetch(withBase('/api/share'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

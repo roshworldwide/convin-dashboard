@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createShare, listShares, revokeShare } from '../../../lib/share.mjs';
 import { publicBaseUrl } from '../../../lib/publicurl.mjs';
+import { BASE_PATH } from '../../../lib/basepath.mjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,7 @@ export async function POST(request) {
     return NextResponse.json({
       ok: true,
       token: row.token,
-      url: `${base.url}/r/${row.token}`,
+      url: `${base.url}${BASE_PATH}/r/${row.token}`,
       source: base.source,            // 'env' | 'tunnel' | 'origin' | 'local'
       expiresAt: row.expires_at,
       label: row.label,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { withBase } from '../../lib/basepath.mjs';
 import { C, T, NUM, Card, Overline, Capsule, Chip, fmtInt } from '../aurum';
 
 /* ═══════════════════════════════════════════════════════════════════════════════
@@ -26,7 +27,7 @@ export default function Reports() {
   const [deleting, setDeleting] = useState('');
 
   const load = async () => {
-    const r = await fetch('/api/data');
+    const r = await fetch(withBase('/api/data'));
     if (r.status !== 200) { setAuthed(false); return; }
     setManifest(await r.json()); setAuthed(true);
   };
@@ -34,7 +35,7 @@ export default function Reports() {
 
   const removeReport = async (date) => {
     setDeleting(date);
-    try { await fetch(`/api/report?date=${encodeURIComponent(date)}`, { method: 'DELETE' }); setConfirmDate(''); await load(); }
+    try { await fetch(withBase(`/api/report?date=${encodeURIComponent(date)}`), { method: 'DELETE' }); setConfirmDate(''); await load(); }
     catch {} finally { setDeleting(''); }
   };
 

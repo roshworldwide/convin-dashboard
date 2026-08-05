@@ -19,6 +19,7 @@ import { readSheet, detectSheetKind } from './sheet.mjs';
 import { buildCanonicalRows } from './merge.mjs';
 import { autoMap } from './normalize.mjs';
 import { rollUpCallLog, applyCallLog } from './calllog.mjs';
+import { withBase } from './basepath.mjs';
 
 const CHUNK_ROWS = 2500;
 
@@ -40,7 +41,7 @@ async function post(payload, onRetry) {
      half-written book in the database — which is the failure mode this whole app has
      been built to make impossible. */
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch('/api/ingest/chunk', { method: 'POST', headers, body });
+    const res = await fetch(withBase('/api/ingest/chunk'), { method: 'POST', headers, body });
     const j = await res.json().catch(() => ({}));
     if (res.ok) return j;
     if (attempt === 0 && res.status >= 500) { onRetry?.(); continue; }
