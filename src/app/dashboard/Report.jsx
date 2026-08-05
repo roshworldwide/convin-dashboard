@@ -1715,9 +1715,10 @@ export default function Report({ shareToken = null }) {
             <div style={{ fontSize: 13, color: txt(.62), lineHeight: 1.55 }}>
               <strong style={{ color: AU.primary, fontWeight: 600 }}>A note on this export.</strong>{' '}
               {data.quality.unknownBands?.length > 0 && (
-                <>We found balance {data.quality.unknownBands.length === 1 ? 'band' : 'bands'} we don&apos;t recognise
-                  ({data.quality.unknownBands.join(', ')}). {data.quality.unknownBands.length === 1 ? 'It is' : 'They are'} charted
-                  as-is rather than dropped, so every account is still accounted for.{' '}</>
+                <>We found {data.quality.unknownBands.length === 1 ? 'a balance band' : 'balance bands'} we don&apos;t recognise
+                  {' '}({data.quality.unknownBands.join(', ')}).{' '}
+                  {data.quality.unknownBands.length === 1 ? 'It is' : 'They are'} charted as-is rather than dropped,
+                  so every account is still accounted for.{' '}</>
               )}
               {data.quality.dirtyAttemptRows > 0 && (
                 <>{fmtInt(data.quality.dirtyAttemptRows)} {data.quality.dirtyAttemptRows === 1 ? 'account records a connected call' : 'accounts record connected calls'} with

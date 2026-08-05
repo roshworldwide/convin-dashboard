@@ -2,7 +2,7 @@
 // Works on a RECORD MAP (raw header -> value) so a row can be assembled from
 // several sheets (status sheet + portfolio/base sheet) before normalizing.
 
-export const BAND_ORDER = ['20-30K', '30-50K', '50-70K', '70-100K', '100-200K', '>200K'];
+export const BAND_ORDER = ['<20K', '20-30K', '30-50K', '50-70K', '70-100K', '100-200K', '>200K'];
 
 export const num = (x) => {
   const n = parseFloat(String(x ?? '').replace(/[, ₹]/g, '').trim());
