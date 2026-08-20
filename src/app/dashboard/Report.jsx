@@ -901,6 +901,107 @@ export default function Report({ shareToken = null }) {
     requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
   };
 
+  /* ── Download the WHOLE report date as one self-contained .html ────────────────
+     One file, openable offline with no server and no network, containing EVERY day
+     under this report date — Summary + Day Total + Day 1..N — as switchable tabs.
+     It works by snapshotting each tab's already-rendered DOM and inlining the page's
+     stylesheet, so the file looks exactly like the live report. This is why the app
+     is heavily inline-styled: the rendered markup is self-describing. */
+  const [downloading, setDownloading] = useState(false);
+  const downloadReport = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const wasDark = document.documentElement.classList.contains('dark');
+    if (wasDark) document.documentElement.classList.remove('dark');   // print/export is always light
+    const original = batchId;
+    try {
+      let specs, pick;
+      if (shareToken) {
+        specs = (shareTabs && shareTabs.length ? shareTabs : [{ id: batchId, label: 'Report' }]).map((t) => ({ id: t.id, label: t.label }));
+        pick = selectShareBatch;
+      } else {
+        const day = manifest?.dates?.[dateIdx];
+        if (!day) { if (wasDark) document.documentElement.classList.add('dark'); setDownloading(false); return; }
+        specs = [
+          { id: SUMMARY_ID, label: 'Summary' },
+          { id: day.dayTotal, label: 'Day Total' },
+          ...day.uploads.map((u) => ({ id: u.id, label: dayLabel(u) })),
+        ];
+        pick = selectBatch;
+      }
+      const sections = [];
+      for (const s of specs) {
+        await pick(s.id);
+        await raf();
+        await new Promise((r) => setTimeout(r, 140));   // let the fetch + charts settle
+        const shell = document.querySelector('.page-shell');
+        if (!shell) continue;
+        const clone = shell.cloneNode(true);
+        clone.querySelectorAll('.no-print, .island, button, a[href], script, .no-print-explorer').forEach((e) => e.remove());
+        sections.push({ label: s.label, html: clone.innerHTML });
+      }
+      if (!sections.length) throw new Error('Nothing rendered to export.');
+
+      // Inline every stylesheet rule we can read (same-origin) → the file is standalone.
+      let css = '';
+      for (const sheet of Array.from(document.styleSheets)) {
+        try { for (const rule of Array.from(sheet.cssRules)) css += rule.cssText + '\n'; } catch { /* cross-origin, skip */ }
+      }
+      const dateIso = shareToken ? (data?.meta?.reportDate || 'report') : manifest.dates[dateIdx].date;
+      const dateLabel = data?.meta?.reportDate || dateIso;
+      const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const btns = sections.map((s, i) => `<button class="xtab-btn${i === 0 ? ' on' : ''}" data-i="${i}">${esc(s.label)}</button>`).join('');
+      const panes = sections.map((s, i) => `<div class="xtab${i === 0 ? ' on' : ''}" id="xtab-${i}"><div class="page-shell">${s.html}</div></div>`).join('');
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Recovery Intelligence — ${esc(dateLabel)}</title>
+<style>${css}</style>
+<style>
+ html,body{margin:0;background:var(--surface-canvas,#F2F1EC);}
+ .xwrap{max-width:1440px;margin:0 auto;padding:14px 40px 60px;}
+ .xhead{font:600 12px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:#6b7280;padding:14px 0 6px;letter-spacing:.03em;text-transform:uppercase;}
+ .xhead b{color:#111;font-weight:700;}
+ .xtabbar{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 20px;padding:5px;background:rgba(0,0,0,.05);border-radius:999px;width:max-content;max-width:100%;}
+ .xtab-btn{border:none;cursor:pointer;border-radius:999px;padding:8px 15px;font:600 13px system-ui,-apple-system,sans-serif;color:#5b6470;background:transparent;white-space:nowrap;}
+ .xtab-btn.on{background:#1d1d1f;color:#fff;}
+ .xtab{display:none;} .xtab.on{display:block;}
+ @media print{ .xtabbar,.xhead{display:none;} .xtab{display:block!important;} }
+</style></head>
+<body>
+ <div class="xwrap">
+  <div class="xhead">Recovery Intelligence · Convin × RBL Bank — report date <b>${esc(dateLabel)}</b> · exported ${esc(new Date().toLocaleString('en-GB'))}</div>
+  <div class="xtabbar">${btns}</div>
+  ${panes}
+ </div>
+ <script>
+  (function(){
+   var btns=[].slice.call(document.querySelectorAll('.xtab-btn'));
+   var panes=[].slice.call(document.querySelectorAll('.xtab'));
+   btns.forEach(function(b){ b.addEventListener('click',function(){
+     btns.forEach(function(x){x.classList.remove('on');});
+     panes.forEach(function(p){p.classList.remove('on');});
+     b.classList.add('on');
+     var t=document.getElementById('xtab-'+b.getAttribute('data-i')); if(t){t.classList.add('on');}
+     window.scrollTo(0,0);
+   });});
+  })();
+ </script>
+</body></html>`;
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Recovery-Intelligence_${String(dateIso).replace(/[^\w.-]+/g, '-')}.html`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) {
+      window.alert('Could not build the download.\n\n' + (e && e.message ? e.message : String(e)));
+    } finally {
+      try { if (shareToken) { await selectShareBatch(original); } else { await selectBatch(original); } } catch { /* leave as-is */ }
+      if (wasDark) document.documentElement.classList.add('dark');
+      setDownloading(false);
+    }
+  };
+
   /* THE ACCOUNT EXPLORER IS GONE, AND SO IS ITS FETCH.
      It was the only surface in the product that pulled customer names, mobile numbers
      and 19-digit account numbers into a browser. With the table removed there is
@@ -1432,6 +1533,12 @@ export default function Report({ shareToken = null }) {
         <button onClick={openShare} title="Create a private read-only link to this report" className="pill"
           style={{ background: ink(.07), color: AU.primary, fontSize: 12, fontWeight: 600, padding: '7px 14px', whiteSpace: 'nowrap' }}>
           Share
+        </button>
+        {/* Download the whole report DATE — every day inside it — as one self-contained
+            .html file that opens offline, with the days as switchable tabs. */}
+        <button onClick={downloadReport} disabled={downloading} title="Download this date's full report (all days) as a self-contained .html file" aria-label="Download report as HTML" className="pill"
+          style={{ background: ink(.07), color: AU.primary, fontSize: 12, fontWeight: 600, padding: '7px 14px', whiteSpace: 'nowrap', opacity: downloading ? 0.6 : 1, cursor: downloading ? 'default' : 'pointer' }}>
+          {downloading ? 'Preparing…' : 'Download'}
         </button>
         <button onClick={logout} className="pill" style={{ background: 'transparent', color: AU.tertiary, fontSize: 12, fontWeight: 600, padding: '7px 14px' }}>Log out</button>
       </div>
