@@ -30,6 +30,13 @@ export const dateOnly = (v) => {
 };
 
 export const bandNorm = (b) => String(b ?? '').trim().toUpperCase().replace(/\s/g, '');
+
+/* Column headers arrive with punctuation and casing we cannot predict — a CYC export
+   heads its key "Account No#", a status file heads it "account_no", another "ACCOUNT NO".
+   Canonicalise to bare lowercase alphanumerics so an alias matches its column regardless
+   of decoration. Without this, a header that is off by a single "#" is treated as a
+   different column entirely — the CYC key goes unread and the whole file joins to nothing. */
+export const canonHeader = (h) => String(h ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 export const entityNorm = (v) => {
   const s = String(v ?? '').trim();
   if (s === '') return 'Blank';
@@ -280,9 +287,15 @@ export function decodesTo(candidate, corrupt) {
  * repairing a bank's identifiers and saying nothing is how you lose their trust for good.
  */
 export function accountKey(rec, mapping) {
+  /* Resolve the mapping + aliases to this record's ACTUAL column names, tolerant of
+     header decoration (canonHeader): "Account No#", "Account No.", "ACCOUNT_NO" all
+     resolve to the same column. `names` therefore holds real columns of `rec`. */
+  const canonIdx = new Map();
+  for (const col of Object.keys(rec)) { const k = canonHeader(col); if (k && !canonIdx.has(k)) canonIdx.set(k, col); }
   const names = [];
-  if (mapping && mapping.account_no) names.push(mapping.account_no);
-  for (const n of ALIASES.account_no) if (!names.includes(n)) names.push(n);
+  const add = (name) => { const col = name != null && canonIdx.get(canonHeader(name)); if (col && !names.includes(col)) names.push(col); };
+  if (mapping && mapping.account_no) add(mapping.account_no);
+  for (const n of ALIASES.account_no) add(n);
 
   let corrupt = '';
   let corruptCol = '';
@@ -357,11 +370,17 @@ export function getField(rec, key, mapping) {
 
 /** Auto-detect a mapping from a list of raw headers (used by the mapping UI). */
 export function autoMap(headers) {
-  const set = new Set(headers.map((h) => String(h ?? '').trim()));
+  /* Match aliases to headers on their CANONICAL form (canonHeader), so a column called
+     "Account No#" is auto-detected against the "Account No" alias. Return the ORIGINAL
+     header string, so the mapping names the column exactly as the file spells it. */
+  const canon = new Map();
+  for (const h of headers) { const k = canonHeader(h); if (k && !canon.has(k)) canon.set(k, String(h ?? '').trim()); }
   const out = {};
   for (const key of Object.keys(ALIASES)) {
-    const hit = (ALIASES[key] || []).find((n) => set.has(n));
-    if (hit) out[key] = hit;
+    for (const alias of (ALIASES[key] || [])) {
+      const hit = canon.get(canonHeader(alias));
+      if (hit) { out[key] = hit; break; }
+    }
   }
   return out;
 }

@@ -5,7 +5,7 @@
 //
 //   node evals/stress_keys.mjs
 
-import { normalizeAccount, accountKey, isCorruptAccount, decodesTo } from '../src/lib/normalize.mjs';
+import { normalizeAccount, accountKey, isCorruptAccount, decodesTo, autoMap } from '../src/lib/normalize.mjs';
 
 const TRUE = '0007476780006975616';
 let checks = 0, fails = 0;
@@ -98,6 +98,15 @@ console.log('\n══ CHOOSING THE COLUMN ══\n');
   const r = accountKey({ account_number: '9.99999E+15', 'Random Ref': TRUE }, { account_no: 'account_number' });
   t('unknown column, unproven: REFUSED', r.corrupt, true);
 }
+
+console.log('\n══ DECORATED HEADERS (a "#" must not lose the column) ══\n');
+// The bug: a CYC headed "Account No#" joined a status file headed "account_no" to
+// NOTHING, because the header was matched exactly and "Account No#" ≠ "Account No".
+t('header "Account No#" still resolves',   accountKey({ 'Account No#': TRUE }, null).key,         TRUE);
+t('header "ACCOUNT_NO" (case/punct)',      accountKey({ 'ACCOUNT_NO': TRUE }, null).key,          TRUE);
+t('header "Account No ." trailing dot',    accountKey({ 'Account No .': TRUE }, null).key,        TRUE);
+t('autoMap detects "Account No#"',         autoMap(['Account No#', 'Bucket', 'status']).account_no, 'Account No#');
+t('autoMap detects lowercase account_no',  autoMap(['account_no', 'status']).account_no,          'account_no');
 
 console.log(`\n${'─'.repeat(72)}`);
 console.log(`${checks} checks · ${fails} failure(s)\n`);
