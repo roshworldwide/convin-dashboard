@@ -111,9 +111,23 @@ export async function getPayload(id) {
 }
 
 // Stream all rows for a report_date through a callback (for Day Total recompute).
+//
+// ORDER MATTERS. The Day Total is a last-write-wins union by account (see ingest.mjs):
+// whichever row arrives LAST for an account wins. Postgres returns rows in an
+// unspecified order unless told otherwise, so without this ORDER BY an OLDER upload
+// (Day 1) could overwrite a NEWER one (Day 2) — and the Day Total would come out lower
+// than a single day, which is exactly the bug this fixes. Ordering by the batch's
+// upload time (oldest first) guarantees the newest day wins.
 export async function forEachRowOfDate(reportDate, onRow) {
   const pool = await getPool();
-  const { rows } = await pool.query(`SELECT ${DATA_COLS.join(',')} FROM account_rows WHERE report_date = $1`, [reportDate]);
+  const { rows } = await pool.query(
+    `SELECT ar.${DATA_COLS.join(', ar.')}
+       FROM account_rows ar
+       JOIN batches b ON b.id = ar.batch_id
+      WHERE ar.report_date = $1
+      ORDER BY b.uploaded_at ASC`,
+    [reportDate],
+  );
   for (const r of rows) onRow(r);
 }
 
