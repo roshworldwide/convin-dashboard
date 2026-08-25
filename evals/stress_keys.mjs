@@ -5,7 +5,7 @@
 //
 //   node evals/stress_keys.mjs
 
-import { normalizeAccount, accountKey, isCorruptAccount, decodesTo, autoMap } from '../src/lib/normalize.mjs';
+import { normalizeAccount, accountKey, isCorruptAccount, decodesTo, autoMap, isResolved } from '../src/lib/normalize.mjs';
 
 const TRUE = '0007476780006975616';
 let checks = 0, fails = 0;
@@ -107,6 +107,17 @@ t('header "ACCOUNT_NO" (case/punct)',      accountKey({ 'ACCOUNT_NO': TRUE }, nu
 t('header "Account No ." trailing dot',    accountKey({ 'Account No .': TRUE }, null).key,        TRUE);
 t('autoMap detects "Account No#"',         autoMap(['Account No#', 'Bucket', 'status']).account_no, 'Account No#');
 t('autoMap detects lowercase account_no',  autoMap(['account_no', 'status']).account_no,          'account_no');
+
+console.log('\n══ RESOLVED VOCABULARY (RBL bucket files: Normalisation / STAB / RB) ══\n');
+// The bug: a status file that reports outcomes as "Normalisation / STAB / RB / Unresolved"
+// scored 0% resolved, because the rule only accepted the literal word "Resolved".
+t('literal "Resolved"',            isResolved({ status: 'Resolved' }),      true);
+t('lowercase "resolved"',          isResolved({ status: 'resolved' }),      true);
+t('"Normalisation" counts',        isResolved({ status: 'Normalisation' }), true);
+t('"STAB" counts',                 isResolved({ status: 'STAB' }),          true);
+t('"RB" counts',                   isResolved({ status: 'RB' }),            true);
+t('"Unresolved" does NOT count',   isResolved({ status: 'Unresolved' }),    false);
+t('empty status does NOT count',   isResolved({ status: '' }),              false);
 
 console.log(`\n${'─'.repeat(72)}`);
 console.log(`${checks} checks · ${fails} failure(s)\n`);

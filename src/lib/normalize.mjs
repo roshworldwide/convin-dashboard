@@ -466,4 +466,13 @@ export function normalizeMap(rec, mapping) {
   };
 }
 
-export const isResolved = (r) => r.status === 'Resolved';
+/* What RBL counts as a recovered / resolved account.
+   The July status files used a single "Resolved" label. The August "Bucket Status"
+   files itemise the positive side into Normalisation (fully cured), STAB (stabilised)
+   and RB (rolled back) — everything that is NOT "Unresolved". Per RBL's convention all
+   of these are resolved outcomes, so we recognise them here. Matched case-insensitively
+   so "Resolved", "resolved", "NORMALISATION", "Stab" etc. all count. The outcome still
+   comes only from RBL's own status file — we are reading their words, not marking our
+   own homework. */
+export const RESOLVED_STATUSES = new Set(['resolved', 'normalisation', 'normalization', 'stab', 'rb']);
+export const isResolved = (r) => RESOLVED_STATUSES.has(String(r.status ?? '').trim().toLowerCase());
