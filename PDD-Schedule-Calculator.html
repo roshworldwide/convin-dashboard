@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDD Schedule Calculator — Convin × RBL</title>
+<style>
+  /* ───────────────────────────────────────────────────────────────
+     SF Pro only. On macOS, -apple-system / BlinkMacSystemFont resolve
+     to the real San Francisco family — no web font, no network call,
+     no fallback substitution. The named SF Pro faces come first for
+     machines where the font is installed explicitly.
+     ─────────────────────────────────────────────────────────────── */
+  :root {
+    --sf: "SF Pro Display", "SF Pro Text", "SF Pro", -apple-system,
+          BlinkMacSystemFont, "Helvetica Neue", system-ui, sans-serif;
+
+    --bg:        #F4F1EC;
+    --bg2:       #EDE9E2;
+    --card:      #FFFFFF;
+    --card-soft: #FBFAF7;
+    --ink:       #171714;
+    --ink-2:     #3D3A34;
+    --muted:     #7A756C;
+    --faint:     #A8A399;
+    --line:      #E6E1D8;
+    --line-2:    #F0ECE4;
+    --green:     #14624A;
+    --green-bg:  #E8F1ED;
+    --amber:     #8A5D14;
+    --amber-bg:  #FBF1DF;
+    --red:       #8C2F22;
+    --red-bg:    #FAEBE8;
+    --shadow:    0 1px 2px rgba(23,23,20,.04), 0 8px 24px rgba(23,23,20,.05);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sf);
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #FFFDF9 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+    background-attachment: fixed;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "kern" 1;
+    line-height: 1.45;
+    padding: 48px 24px 96px;
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; }
+
+  /* ── masthead ── */
+  .masthead { margin-bottom: 32px; }
+  .eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--faint); margin-bottom: 10px;
+  }
+  h1 {
+    font-size: 42px; font-weight: 700; letter-spacing: -.028em;
+    margin: 0 0 10px; line-height: 1.08;
+  }
+  .sub { font-size: 15.5px; color: var(--muted); max-width: 62ch; margin: 0; }
+  .sub b { color: var(--ink-2); font-weight: 600; }
+
+  /* ── cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    padding: 26px 28px;
+    margin-bottom: 22px;
+  }
+  .card-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 4px;
+  }
+  h2 { font-size: 20px; font-weight: 650; letter-spacing: -.018em; margin: 0; }
+  h3 { font-size: 15px; font-weight: 640; letter-spacing: -.01em; margin: 0; }
+  .card-desc { font-size: 13.5px; color: var(--muted); margin: 6px 0 20px; max-width: 70ch; }
+
+  /* ── inputs ── */
+  .field-label {
+    display: block; font-size: 11px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--faint); margin-bottom: 9px;
+  }
+  textarea, input[type=text], input[type=number], select {
+    font-family: var(--sf); font-size: 14px; color: var(--ink);
+    background: var(--card-soft); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 14px; width: 100%;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  textarea {
+    min-height: 132px; resize: vertical; line-height: 1.7;
+    font-variant-numeric: tabular-nums;
+  }
+  textarea:focus, input:focus, select:focus {
+    outline: none; border-color: #C9C2B4; background: #fff;
+  }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .row > * { flex: 1 1 180px; }
+
+  button {
+    font-family: var(--sf); font-size: 14px; font-weight: 600;
+    letter-spacing: -.005em; border-radius: 11px; padding: 11px 20px;
+    border: 1px solid transparent; cursor: pointer;
+    transition: transform .08s ease, background .15s ease, border-color .15s ease;
+  }
+  button:active { transform: translateY(1px); }
+  .btn-primary { background: var(--ink); color: #fff; }
+  .btn-primary:hover { background: #2C2924; }
+  .btn-ghost {
+    background: transparent; color: var(--ink-2); border-color: var(--line);
+  }
+  .btn-ghost:hover { border-color: #CFC8BA; background: var(--card-soft); }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; align-items: center; }
+
+  /* ── tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th {
+    text-align: left; font-size: 10.5px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--faint);
+    padding: 0 12px 10px; border-bottom: 1px solid var(--line);
+  }
+  td {
+    padding: 11px 12px; border-bottom: 1px solid var(--line-2);
+    font-variant-numeric: tabular-nums; vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tbody tr.is-final td { background: var(--green-bg); }
+  td.mono { font-weight: 600; letter-spacing: -.01em; }
+  .arrow { color: var(--faint); padding: 0 5px; }
+
+  /* ── chips & badges ── */
+  .chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 26px; height: 24px; padding: 0 8px; border-radius: 8px;
+    background: var(--bg2); color: var(--ink-2);
+    font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums;
+  }
+  .chip.final { background: var(--green); color: #fff; }
+  .badge {
+    display: inline-block; padding: 3px 9px; border-radius: 7px;
+    font-size: 11px; font-weight: 640; letter-spacing: .01em;
+    background: var(--bg2); color: var(--ink-2);
+  }
+  .badge.green { background: var(--green-bg); color: var(--green); }
+  .tag {
+    display: inline-block; font-size: 11.5px; color: var(--muted);
+    background: var(--card-soft); border: 1px solid var(--line-2);
+    border-radius: 6px; padding: 2px 7px; margin: 2px 4px 2px 0;
+  }
+
+  /* ── group blocks ── */
+  .group { border: 1px solid var(--line); border-radius: 15px; overflow: hidden; margin-bottom: 16px; }
+  .group-head {
+    background: var(--card-soft); border-bottom: 1px solid var(--line);
+    padding: 15px 18px; display: flex; align-items: center;
+    justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  }
+  .group-title { font-size: 15px; font-weight: 650; letter-spacing: -.012em; }
+  .group-title span { color: var(--muted); font-weight: 500; }
+  .group-body { padding: 6px 6px 4px; }
+
+  /* ── per-day filter panels (mirrors the Convin filter bar) ── */
+  .days { padding: 14px; display: grid; gap: 13px; }
+  .day-card {
+    border: 1px solid var(--line-2); border-radius: 13px;
+    overflow: hidden; background: var(--card);
+  }
+  .day-card.is-last { border-color: #CDE3D9; }
+  .day-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 11px 14px; background: var(--card-soft);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .day-card.is-last .day-head { background: var(--green-bg); border-bottom-color: #CDE3D9; }
+  .day-name { font-size: 13.5px; font-weight: 660; letter-spacing: -.012em; }
+  .day-spacer { flex: 1 1 auto; }
+  .panel {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1px; background: var(--line-2);
+  }
+  .pf { background: #fff; padding: 10px 14px; }
+  .pf-k {
+    font-size: 9.5px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--faint); margin-bottom: 4px;
+    white-space: nowrap;
+  }
+  .pf-v {
+    font-size: 14px; font-weight: 630; letter-spacing: -.014em;
+    font-variant-numeric: tabular-nums;
+  }
+  .pf-v.dim { color: var(--muted); font-weight: 560; }
+  .pf-v.hot { color: var(--green); }
+  .sub-label {
+    font-size: 9.5px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--faint);
+    padding: 10px 14px 5px; background: #fff; border-top: 1px solid var(--line-2);
+  }
+  .btn-mini {
+    font-size: 11.5px; font-weight: 600; padding: 5px 11px; border-radius: 8px;
+    background: transparent; border: 1px solid var(--line); color: var(--ink-2);
+  }
+  .btn-mini:hover { background: #fff; border-color: #CFC8BA; }
+
+  /* ── notes ── */
+  .note {
+    border-radius: 12px; padding: 13px 16px; font-size: 13px;
+    margin-bottom: 12px; line-height: 1.5;
+  }
+  .note b { font-weight: 640; }
+  .note.info  { background: var(--card-soft); border: 1px solid var(--line); color: var(--ink-2); }
+  .note.warn  { background: var(--amber-bg); border: 1px solid #EFDCB6; color: var(--amber); }
+  .note.error { background: var(--red-bg);   border: 1px solid #EFCFC8; color: var(--red); }
+  .note.good  { background: var(--green-bg); border: 1px solid #CDE3D9; color: var(--green); }
+
+  .rules { display: flex; gap: 10px; flex-wrap: wrap; }
+  .rule {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--card-soft); border: 1px solid var(--line-2);
+    border-radius: 11px; padding: 9px 12px;
+  }
+  .rule label { font-size: 12.5px; font-weight: 620; color: var(--ink-2); white-space: nowrap; }
+  .rule input {
+    width: 52px; padding: 5px 8px; text-align: center;
+    font-variant-numeric: tabular-nums; font-weight: 620; border-radius: 8px;
+  }
+  .rule span { font-size: 12px; color: var(--muted); }
+
+  details.adv { margin-top: 18px; }
+  details.adv summary {
+    cursor: pointer; font-size: 13px; font-weight: 620; color: var(--ink-2);
+    list-style: none; display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 0; user-select: none;
+  }
+  details.adv summary::-webkit-details-marker { display: none; }
+  details.adv summary::before { content: "›"; font-size: 15px; color: var(--faint); transition: transform .18s ease; }
+  details.adv[open] summary::before { transform: rotate(90deg); }
+  details.adv .adv-body { padding-top: 14px; }
+
+  .foot { font-size: 12.5px; color: var(--faint); text-align: center; margin-top: 40px; line-height: 1.7; }
+  .hidden { display: none !important; }
+  .toast {
+    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%) translateY(12px);
+    background: var(--ink); color: #fff; font-size: 13.5px; font-weight: 560;
+    padding: 11px 20px; border-radius: 11px; opacity: 0;
+    transition: opacity .2s ease, transform .2s ease; pointer-events: none; z-index: 50;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .no-print { display: none !important; }
+    .card { box-shadow: none; break-inside: avoid; page-break-inside: avoid; }
+    .group { break-inside: avoid; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="eyebrow">Convin × RBL Bank · Collections</div>
+    <h1>PDD Schedule Calculator</h1>
+    <p class="sub">
+      Paste your PDD file names and the date each was added to S3. Returns the exact
+      <b>status files</b> to pull and the <b>AI Call Log filters</b> for every day —
+      so the schedule never has to be asked for again.
+    </p>
+  </div>
+
+  <!-- ── INPUT ── -->
+  <div class="card no-print">
+    <div class="card-head"><h2>Files</h2></div>
+    <p class="card-desc">
+      One file per line: the file name, then the date it was added to S3.
+      Separated by spaces, tabs or a comma — all of these parse fine.
+    </p>
+
+    <label class="field-label" for="input">File name &nbsp;·&nbsp; date added to S3</label>
+    <textarea id="input" spellcheck="false">22 PDD+2 Convin.xlsx    13/08/2026
+22 PDD+1 Convin.xlsx    13/08/2026
+20 PDD+4 Convin.xlsx    13/08/2026
+20 PDD+2 Convin.xlsx    11/08/2026
+20 PDD+1 Convin.xlsx    10/08/2026
+18 PDD+4 DG Convin.xlsx 11/08/2026</textarea>
+
+    <div class="btn-row">
+      <button class="btn-primary" id="go">Generate schedule</button>
+      <button class="btn-ghost" id="clear">Clear</button>
+      <div style="flex:0 0 auto; margin-left:6px;">
+        <select id="fmt" style="width:auto; padding:9px 12px;">
+          <option value="dmy" selected>Input dates are DD/MM/YYYY</option>
+          <option value="mdy">Input dates are MM/DD/YYYY</option>
+        </select>
+      </div>
+    </div>
+
+    <details class="adv">
+      <summary>Timing rules</summary>
+      <div class="adv-body">
+        <p class="card-desc" style="margin-top:0">
+          How many status files each PDD type needs. These are RBL's numbers — change them
+          here if the bank revises the table.
+        </p>
+        <div class="rules" id="rules"></div>
+      </div>
+    </details>
+  </div>
+
+  <div id="out"></div>
+
+</div>
+
+<div class="toast" id="toast">Copied</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── RBL's timing table: PDD+n → number of status files (Day 1 … Day N) ── */
+  var DAYS = { 1: 5, 2: 4, 4: 3, 5: 2, 7: 4 };
+
+  var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  /* ── dates: held as UTC so day-arithmetic never shifts across a timezone ── */
+  function mkUTC(y, m, d) { return new Date(Date.UTC(y, m - 1, d)); }
+  function addDays(dt, n) { return new Date(dt.getTime() + n * 86400000); }
+  function fmtLong(dt) { return dt.getUTCDate() + " " + MONTHS[dt.getUTCMonth()] + " " + dt.getUTCFullYear(); }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  /* the filter panel is mm/dd/yyyy */
+  function fmtPanel(dt) { return pad(dt.getUTCMonth() + 1) + "/" + pad(dt.getUTCDate()) + "/" + dt.getUTCFullYear(); }
+  function key(dt) { return dt.toISOString().slice(0, 10); }
+
+  function parseDate(str, order) {
+    var m = str.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return mkUTC(+m[1], +m[2], +m[3]);
+    m = str.match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{2,4})/);
+    if (!m) return null;
+    var a = +m[1], b = +m[2], y = +m[3];
+    if (y < 100) y += 2000;
+    var d = order === "mdy" ? b : a;
+    var mo = order === "mdy" ? a : b;
+    if (mo > 12 && d <= 12) { var t = mo; mo = d; d = t; }   /* obvious swap, recover it */
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    return mkUTC(y, mo, d);
+  }
+
+  /* ── parse one input line into a file record ── */
+  function parseLine(line, order) {
+    var raw = line.trim();
+    if (!raw) return null;
+
+    var dm = raw.match(/(\d{4}-\d{1,2}-\d{1,2})|(\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{2,4})/);
+    var name = dm ? raw.slice(0, dm.index).replace(/[,;\t]+$/, "").trim() : raw;
+    var S = dm ? parseDate(dm[0], order) : null;
+
+    var nm = raw.match(/PDD\s*\+?\s*(\d+)/i);
+    var n = nm ? +nm[1] : null;
+
+    var rec = { raw: raw, name: name || raw, n: n, S: S, days: null, error: null };
+
+    if (!S)              rec.error = "No S3 date found on this line.";
+    else if (n === null) rec.error = "No “PDD+n” found in the file name.";
+    else if (!DAYS[n])   rec.error = "PDD+" + n + " is not in the timing table — add it under Timing rules.";
+    else                 rec.days = DAYS[n];
+
+    return rec;
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  /* ── build the whole schedule ── */
+  function build(files) {
+    var ok = files.filter(function (f) { return !f.error; });
+
+    /* group files that share an S — they share one call-log download */
+    var groups = {};
+    ok.forEach(function (f) {
+      var k = key(f.S);
+      if (!groups[k]) groups[k] = { S: f.S, files: [] };
+      groups[k].files.push(f);
+    });
+
+    var list = Object.keys(groups).sort().map(function (k) {
+      var g = groups[k];
+      g.maxDays = Math.max.apply(null, g.files.map(function (f) { return f.days; }));
+      g.rows = [];
+      for (var d = 1; d <= g.maxDays; d++) {
+        var users = g.files.filter(function (f) { return f.days >= d; });
+        g.rows.push({
+          day: d,
+          from: g.S,
+          to: addDays(g.S, d),
+          status: addDays(g.S, d),
+          users: users,
+          endsHere: g.files.filter(function (f) { return f.days === d; })
+        });
+      }
+      return g;
+    });
+
+    var statusDates = {};
+    list.forEach(function (g) { g.rows.forEach(function (r) { statusDates[key(r.status)] = r.status; }); });
+    var downloads = list.reduce(function (a, g) { return a + g.maxDays; }, 0);
+
+    return {
+      files: files, ok: ok, groups: list,
+      downloads: downloads,
+      statusDates: Object.keys(statusDates).sort().map(function (k) { return statusDates[k]; })
+    };
+  }
+
+  /* ── render ── */
+  function render(m) {
+    var out = document.getElementById("out");
+    var h = "";
+
+    var bad = m.files.filter(function (f) { return f.error; });
+    if (bad.length) {
+      h += '<div class="card"><div class="card-head"><h2>Couldn’t read these lines</h2></div>';
+      bad.forEach(function (f) {
+        h += '<div class="note error"><b>' + esc(f.raw) + '</b><br>' + esc(f.error) + '</div>';
+      });
+      h += '</div>';
+    }
+    if (!m.ok.length) {
+      out.innerHTML = h || '<div class="card"><div class="note error">Nothing to calculate — add at least one PDD file.</div></div>';
+      return;
+    }
+
+    /* per load date — every filter field, spelled out, one card per download */
+    h += '<div class="card"><div class="card-head"><h2>AI Call Log filters</h2>' +
+         '<span class="badge">grouped by load date</span></div>' +
+         '<p class="card-desc">One card per download — type these straight into the filter bar. ' +
+         'Everything stays fixed except <b>To Date</b>, shown in green, which moves forward one day ' +
+         'at a time so the calls always cover exactly the period its status file reports on.</p>';
+
+    m.groups.forEach(function (g, gi) {
+      h += '<div class="group"><div class="group-head">' +
+           '<div class="group-title">Loaded ' + fmtLong(g.S) +
+           ' <span>· ' + g.maxDays + ' download' + (g.maxDays === 1 ? '' : 's') + '</span></div><div>';
+      g.files.forEach(function (f) {
+        h += '<span class="tag">' + esc(f.name) + ' · ' + f.days + 'd</span>';
+      });
+      h += '</div></div><div class="days">';
+
+      g.rows.forEach(function (r, ri) {
+        var isLast = r.endsHere.length > 0;
+        h += '<div class="day-card' + (isLast ? ' is-last' : '') + '">' +
+             '<div class="day-head">' +
+             '<span class="chip' + (isLast ? ' final' : '') + '">' + r.day + '</span>' +
+             '<span class="day-name">Day ' + r.day + '</span>' +
+             '<span class="badge' + (isLast ? ' green' : '') + '">Status file · ' + fmtLong(r.status) + '</span>' +
+             '<span class="day-spacer"></span><span>';
+        r.users.forEach(function (f) {
+          var ends = r.endsHere.indexOf(f) >= 0;
+          h += '<span class="tag">' + esc(shortName(f.name)) + (ends ? ' · final' : '') + '</span>';
+        });
+        h += '</span><button class="btn-mini no-print" data-copy="' + gi + '-' + ri + '">Copy</button></div>' +
+
+             '<div class="panel">' +
+             pf("Interaction activity", "Custom Range", "dim") +
+             pf("Lead state", "All States", "dim") +
+             pf("Lead created from", fmtPanel(g.S)) +
+             pf("Lead created until", fmtPanel(g.S)) +
+             pf("Channel", "All Channels", "dim") +
+             '</div>' +
+
+             '<div class="sub-label">Custom date range</div>' +
+             '<div class="panel">' +
+             pf("From date", fmtPanel(r.from)) +
+             pf("To date", fmtPanel(r.to), "hot") +
+             '</div></div>';
+      });
+      h += '</div></div>';
+    });
+    h += '</div>';
+
+    /* per file */
+    h += '<div class="card"><div class="card-head"><h2>Per file</h2></div>' +
+         '<p class="card-desc">The same schedule read one book at a time — each status file becomes ' +
+         'a Day slot in the dashboard.</p><table><thead><tr>' +
+         '<th>File</th><th style="width:74px">Type</th><th>Loaded (S)</th>' +
+         '<th>Due date should be</th><th style="width:64px">Days</th><th>Status files</th>' +
+         '</tr></thead><tbody>';
+
+    m.ok.forEach(function (f) {
+      var dates = [];
+      for (var d = 1; d <= f.days; d++) dates.push(fmtLong(addDays(f.S, d)));
+      h += '<tr><td style="font-weight:600">' + esc(f.name) + '</td>' +
+           '<td><span class="badge">PDD+' + f.n + '</span></td>' +
+           '<td class="mono">' + fmtLong(f.S) + '</td>' +
+           '<td class="mono" style="color:var(--muted)">' + fmtLong(addDays(f.S, -f.n)) + '</td>' +
+           '<td><span class="chip">' + f.days + '</span></td>' +
+           '<td>' + dates.map(function (x) { return '<span class="tag">' + x + '</span>'; }).join("") + '</td></tr>';
+    });
+    h += '</tbody></table>';
+
+    h += '<div class="note info" style="margin-top:18px"><b>Cross-check.</b> Open any PDD file and read its ' +
+         '<b>Due date</b> column — it must equal the “Due date should be” value above. If it doesn’t, that ' +
+         'file reached S3 late and the S3 date is the one to trust, because leads are created the moment ' +
+         'the file loads.</div>';
+
+    h += '<div class="note warn"><b>Skip the day-zero status file.</b> The status file dated S itself ' +
+         '(' + m.groups.map(function (g) { return fmtLong(g.S); }).join(", ") + ') is pulled before any ' +
+         'calling outcome has landed. It always reads 0% resolved — don’t upload it.</div>';
+
+    h += '<div class="note good"><b>Ten-second self-check.</b> Open the downloaded CSV and look at any ' +
+         '<b>External ID</b>. It ends in <code>_DDMMYYYY</code> — that date must equal S for the group you ' +
+         'pulled. If it does, you have the right cohort.</div></div>';
+
+    /* actions */
+    h += '<div class="btn-row no-print" style="justify-content:center; margin-top:26px">' +
+         '<button class="btn-primary" id="copy">Copy as text</button>' +
+         '<button class="btn-ghost" id="print">Print / save as PDF</button></div>';
+
+    h += '<div class="foot">S = the date the file was added to S3, and the date its leads were created.<br>' +
+         'Timing per RBL: PDD+1 → 5 · PDD+2 → 4 · PDD+4 → 3 · PDD+5 → 2 · PDD+7 → 4 status files.</div>';
+
+    out.innerHTML = h;
+    document.getElementById("copy").onclick = function () { copy(asText(m)); };
+    document.getElementById("print").onclick = function () { window.print(); };
+
+    /* per-day Copy buttons — delegated, so re-renders never leave stale handlers */
+    out.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest("[data-copy]");
+      if (!b) return;
+      var p = b.getAttribute("data-copy").split("-");
+      var g = m.groups[+p[0]];
+      if (g && g.rows[+p[1]]) copy(dayText(g, g.rows[+p[1]]));
+    });
+  }
+
+  function shortName(n) { return n.replace(/\s*Convin.*$/i, "").replace(/\.xlsx?$/i, "").trim() || n; }
+  /* one field of the filter bar */
+  function pf(k, v, cls) {
+    return '<div class="pf"><div class="pf-k">' + k + '</div>' +
+           '<div class="pf-v' + (cls ? " " + cls : "") + '">' + esc(v) + '</div></div>';
+  }
+  /* the same field set as copyable text */
+  function dayText(g, r) {
+    return [
+      "AI CALL LOG FILTERS — Day " + r.day,
+      "Applies to: " + r.users.map(function (f) { return shortName(f.name); }).join(", "),
+      "",
+      "Interaction Activity : Custom Range",
+      "Lead State           : All States",
+      "Lead Created From    : " + fmtPanel(g.S),
+      "Lead Created Until   : " + fmtPanel(g.S),
+      "Channel              : All Channels",
+      "From Date            : " + fmtPanel(r.from),
+      "To Date              : " + fmtPanel(r.to),
+      "",
+      "Pair with status file: " + fmtLong(r.status)
+    ].join("\n");
+  }
+
+  /* ── plain-text export ── */
+  function asText(m) {
+    var L = [];
+    L.push("PDD SCHEDULE — Convin x RBL");
+    L.push("=".repeat(72), "");
+    m.groups.forEach(function (g) {
+      L.push("-".repeat(72));
+      L.push("LOADED " + fmtLong(g.S) + "   —   " + g.maxDays + " call-log download(s)");
+      L.push("Files: " + g.files.map(function (f) { return f.name + " [" + f.days + "d]"; }).join(", "));
+      L.push("-".repeat(72));
+      L.push("Constant on every download of this group:");
+      L.push("   Interaction Activity : Custom Range");
+      L.push("   Lead State           : All States");
+      L.push("   Lead Created From    : " + fmtPanel(g.S));
+      L.push("   Lead Created Until   : " + fmtPanel(g.S));
+      L.push("   Channel              : All Channels");
+      L.push("   From Date            : " + fmtPanel(g.S));
+      L.push("");
+      L.push("   Day | To Date    | Status file  | Applies to");
+      g.rows.forEach(function (r) {
+        L.push("   " + String(r.day).padEnd(3) + " | " + fmtPanel(r.to) + " | " +
+               fmtLong(r.status).padEnd(12) + " | " +
+               r.users.map(function (f) { return shortName(f.name); }).join(", ") +
+               (r.endsHere.length ? "   (final for " + r.endsHere.map(function (f) { return shortName(f.name); }).join(", ") + ")" : ""));
+      });
+      L.push("");
+    });
+    L.push("Status files to collect: " + m.statusDates.map(fmtLong).join(", "));
+    L.push("Call log downloads: " + m.downloads);
+    L.push("");
+    L.push("Do NOT use the status file dated S itself — it always reads 0% resolved.");
+    L.push("Check: every External ID in the CSV ends in _DDMMYYYY equal to S.");
+    return L.join("\n");
+  }
+
+  function copy(text) {
+    function done() {
+      var t = document.getElementById("toast");
+      t.classList.add("show");
+      setTimeout(function () { t.classList.remove("show"); }, 1500);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text, done); });
+    } else fallback(text, done);
+  }
+  function fallback(text, done) {
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { /* nothing else to try */ }
+    document.body.removeChild(ta);
+  }
+
+  /* ── editable timing rules ── */
+  function drawRules() {
+    var el = document.getElementById("rules"), h = "";
+    [1, 2, 4, 5, 7].forEach(function (n) {
+      h += '<div class="rule"><label>PDD+' + n + '</label>' +
+           '<input type="number" min="1" max="30" value="' + (DAYS[n] || "") + '" data-n="' + n + '">' +
+           '<span>status files</span></div>';
+    });
+    el.innerHTML = h;
+    Array.prototype.forEach.call(el.querySelectorAll("input"), function (i) {
+      i.onchange = function () {
+        var v = parseInt(i.value, 10);
+        if (v > 0) { DAYS[+i.dataset.n] = v; run(); }
+      };
+    });
+  }
+
+  function run() {
+    var order = document.getElementById("fmt").value;
+    var lines = document.getElementById("input").value.split("\n");
+    var files = lines.map(function (l) { return parseLine(l, order); }).filter(Boolean);
+    render(build(files));
+  }
+
+  document.getElementById("go").onclick = run;
+  document.getElementById("fmt").onchange = run;
+  document.getElementById("clear").onclick = function () {
+    document.getElementById("input").value = "";
+    document.getElementById("out").innerHTML = "";
+    document.getElementById("input").focus();
+  };
+  document.getElementById("input").addEventListener("keydown", function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") run();
+  });
+
+  drawRules();
+  run();
+})();
+</script>
+</body>
+</html>

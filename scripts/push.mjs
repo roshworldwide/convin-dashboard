@@ -30,6 +30,7 @@ import path from 'node:path';
 import { readSheet, detectSheetKind } from '../src/lib/sheet.mjs';
 import { buildCanonicalRows } from '../src/lib/merge.mjs';
 import { autoMap } from '../src/lib/normalize.mjs';
+import { rollUpCallLog, applyCallLog } from '../src/lib/calllog.mjs';
 import { hasDb } from '../src/lib/db.mjs';
 import { ingestUpload } from '../src/lib/ingest.mjs';
 
@@ -78,13 +79,24 @@ bar();
 
 const cyc = sheets.find((s) => s.kind === 'cyc');
 const primary = cyc || sheets[0];
-const lookups = sheets.filter((s) => s !== primary);
+
+/* THE CALL LOG IS NOT A LOOKUP SHEET.
+   It holds one row per call ATTEMPT; buildCanonicalRows joins one row per ACCOUNT. Hand
+   it over as an ordinary lookup and 67,826 attempts silently become ~5,958 first-attempts
+   — and because the canonical row reads its call fields from the rollup that never ran,
+   every AI figure lands at zero. Accounts, outstanding and recovered all still look
+   right, so nothing announces the loss. It is folded in separately below, exactly as the
+   browser upload path does it. */
+const callSheets = sheets.filter((s) => s.kind === 'calllog');
+const lookups = sheets.filter((s) => s !== primary && s.kind !== 'calllog');
 
 if (!cyc) {
   console.log('  No CYC/PDD file detected — treating the first file as an already-merged export.');
 }
 
-const mapping = autoMap(sheets.flatMap((s) => s.rows[0]));
+/* Map on the LOOKUP headers only — the call log carries "Lead Name" / "Lead Link", and
+   letting those into the mapping invites PII back in through a door calllog.mjs shuts. */
+const mapping = autoMap(sheets.filter((s) => s.kind !== 'calllog').flatMap((s) => s.rows[0]));
 const t0 = Date.now();
 
 let merged;
@@ -97,6 +109,19 @@ try {
 
 const { rows, stats, warnings } = merged;
 console.log(`  joined ${rows.length.toLocaleString('en-IN')} accounts in ${Date.now() - t0} ms`);
+
+/* Roll the attempt-level call log up to one record per account, then fold it onto the
+   joined rows. Without this every AI figure in the report is zero. */
+for (const s of callSheets) {
+  const log = rollUpCallLog(s.rows);
+  const applied = applyCallLog(rows, log, { name: s.name });
+  warnings.push(...applied.warnings);
+  console.log(
+    `    ${s.name.padEnd(48)} ${log.stats.attempts.toLocaleString('en-IN')} attempts`
+    + ` · ${log.stats.connected.toLocaleString('en-IN')} connected`
+    + ` · matched ${applied.matched.toLocaleString('en-IN')} of ${log.stats.accounts.toLocaleString('en-IN')} accounts`,
+  );
+}
 for (const c of stats.sheetCoverage || []) {
   console.log(`    ${c.name.padEnd(48)} matched ${c.matched.toLocaleString('en-IN')} of ${c.of.toLocaleString('en-IN')}`);
 }

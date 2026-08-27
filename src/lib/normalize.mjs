@@ -365,6 +365,14 @@ export function getField(rec, key, mapping) {
     const v = rec[n];
     if (v !== undefined && v !== null && String(v).trim() !== '') return v;
   }
+  /* Last resort: the field's OWN canonical name. This is what lets the app re-ingest a
+     sheet it produced itself — the "already merged" path. Without it, any canonical
+     column that has no hand-written alias (max_attempt, voicemail_calls, promise_flag,
+     the whole call-log rollup) silently reads as empty, and the report renders with the
+     AI-calling half blank while every total still looks plausible. Runs only after the
+     mapping and the aliases have both missed, so it can never shadow either. */
+  const own = rec[key];
+  if (own !== undefined && own !== null && String(own).trim() !== '') return own;
   return '';
 }
 
